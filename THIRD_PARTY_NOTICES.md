@@ -5,7 +5,7 @@ This file is generated from the resolved dependency graph. Do not edit it by han
 Third-party components remain under their own copyright and license terms and are not relicensed by TurboPanel Development Environment's repository license (AGPL-3.0-only).
 
 <!-- lockfiles
-pnpm-lock.yaml sha256:f27eb318a52cf1fefd7650a67148d25381fb83c8e56b3fc24b02291a336359b8
+pnpm-lock.yaml sha256:91cb53d8dff6581093a9e68489f7450d3589d25668760a1c0ed8d79d24d3c082
 -->
 
 ## Production dependencies
@@ -19,11 +19,6 @@ pnpm-lock.yaml sha256:f27eb318a52cf1fefd7650a67148d25381fb83c8e56b3fc24b02291a33
 
 - License: MIT
 - Homepage: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/gradient-string
-
-### @types/react@19.2.17
-
-- License: MIT
-- Homepage: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/react
 
 ### @types/tinycolor2@1.4.6
 
@@ -100,12 +95,6 @@ pnpm-lock.yaml sha256:f27eb318a52cf1fefd7650a67148d25381fb83c8e56b3fc24b02291a33
 - License: MIT
 - Copyright: Vadim Demedes
 - Homepage: https://github.com/vadimdemedes/convert-to-spaces#readme
-
-### csstype@3.2.3
-
-- License: MIT
-- Copyright: Fredrik Nicol
-- Homepage: https://github.com/frenic/csstype#readme
 
 ### environment@1.1.0
 
@@ -543,6 +532,11 @@ These packages are used for development, test, or build tooling and are not bund
 - License: MIT
 - Homepage: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/node
 
+### @types/react@19.2.17
+
+- License: MIT
+- Homepage: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/react
+
 ### @types/react-dom@19.2.3
 
 - License: MIT
@@ -641,6 +635,12 @@ These packages are used for development, test, or build tooling and are not bund
 - License: MIT
 - Copyright: Thorsten Lorenz
 - Homepage: https://github.com/thlorenz/convert-source-map
+
+### csstype@3.2.3
+
+- License: MIT
+- Copyright: Fredrik Nicol
+- Homepage: https://github.com/frenic/csstype#readme
 
 ### debug@4.4.3
 
