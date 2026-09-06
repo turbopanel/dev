@@ -100,6 +100,7 @@
     - role: runtime-sockets
     - role: daemon-logs
     - role: daemon-prereqs
+    - role: rapl-access
     - role: docker
     - role: postgres
     - role: redis
