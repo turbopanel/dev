@@ -156,7 +156,7 @@ tp_export_node_path() {
 # Pin Corepack to package.json — do not let it silently jump to the newest
 # npm release. COREPACK_DEFAULT_TO_LATEST defaults to 1, so `pnpm --version`
 # from $HOME (no package.json) after `corepack prepare --activate` reports
-# latest (e.g. expected 11.22.0, got 11.24.0) and ./console fails on every
+# latest (e.g. expected 12.3.4, got 12.4.0) and ./console fails on every
 # pnpm bump. AUTO_PIN=0 stops Corepack rewriting packageManager hashes.
 tp_corepack_env() {
   COREPACK_ENABLE_DOWNLOAD_PROMPT=0

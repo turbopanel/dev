@@ -289,7 +289,7 @@ The instance repo's `Caddyfile` stays production-only (HTTPS + Deno socket + sta
 - Do not hardcode developer UID/GID — always read from `tp_resolve_dev_identity()` / `tp_require_dev_identity()` in shell scripts.
 - Do not reintroduce `pull.sh`.
 - Platform repos live under **`$HOME`** (via `TURBOPANEL_DEV_ROOT` / `TURBOPANEL_<DIR>_REPO`) — do not clone into `/opt/turbopanel/platform`.
-- Do not bump the pinned Node version without updating `scripts/lib/paths.sh` and docs. Bump pnpm by updating `packageManager` in `package.json` only.
+- Do not bump the pinned Node version without updating `scripts/lib/paths.sh` and docs. Bump pnpm by updating `packageManager` in `package.json` only (keep the hashed Corepack pin). CI `pnpm/action-setup` must stay at **v6.1.0+** — v4 cannot install pnpm 12's native binary.
 - Do not commit directly to `trunk` — use a feature branch and open a PR.
 - Do not run unit tests, typecheck, or lint on the **host** checkout — use `vagrant ssh` (or the TUI Run tests / Services **T**). Host VirtFS trees lack a usable Node/pnpm/Deno `node_modules`.
 - Do not update `AGENTS.md` to describe deleted multi-screen features as if they still exist — document the minimal `src/tui.tsx` flow until those features are reintroduced.
