@@ -235,6 +235,27 @@ test("optionalDevServiceBackingContainers returns empty when unset", () => {
   ]);
 });
 
+test("applyOptionalDevServices treats a masked unit as installed", async () => {
+  mockedSpawnSyncTrustedText.mockReturnValue({
+    status: 0,
+    stdout: "masked",
+    stderr: "",
+    pid: 0,
+    output: ["", "masked", ""],
+    signal: null,
+  });
+  await applyOptionalDevServices({ ...defaultOptionalSelection(), ui: true });
+  expect(
+    mockedRunCaptured.mock.calls.some(
+      ([cmd]) =>
+        Array.isArray(cmd) &&
+        cmd.includes("systemctl") &&
+        cmd.includes("enable") &&
+        cmd.includes("turbopanel-ui"),
+    ),
+  ).toBe(true);
+});
+
 test("applyOptionalDevServices enables installed units with --now", async () => {
   const lines: string[] = [];
   await applyOptionalDevServices(
@@ -344,6 +365,152 @@ test("applyOptionalDevServices falls back to sudo docker when the first docker c
         cmd.includes(MAILPIT_CONTAINER_NAME),
     ),
   ).toBe(true);
+});
+
+test("applyOptionalDevServices treats a failed systemctl show as not installed", async () => {
+  mockedSpawnSyncTrustedText.mockReturnValue({
+    status: 1,
+    stdout: "loaded",
+    stderr: "",
+    pid: 0,
+    output: ["", "loaded", ""],
+    signal: null,
+  });
+  const lines: string[] = [];
+  await applyOptionalDevServices(
+    { ...defaultOptionalSelection(), ui: true, smtp: false },
+    (line) => lines.push(line),
+  );
+  expect(
+    mockedRunCaptured.mock.calls.some(
+      ([cmd]) => Array.isArray(cmd) && cmd.includes("systemctl"),
+    ),
+  ).toBe(false);
+  expect(lines.some((line) => line.includes("UI (Expo) is not installed yet"))).toBe(
+    true,
+  );
+});
+
+test("applyOptionalDevServices treats blank systemctl output as not installed", async () => {
+  mockedSpawnSyncTrustedText.mockReturnValue({
+    status: 0,
+    stdout: "   ",
+    stderr: "",
+    pid: 0,
+    output: ["", "   ", ""],
+    signal: null,
+  });
+  const lines: string[] = [];
+  await applyOptionalDevServices(
+    { ...defaultOptionalSelection(), ui: true },
+    (line) => lines.push(line),
+  );
+  expect(lines.some((line) => line.includes("UI (Expo) is not installed yet"))).toBe(
+    true,
+  );
+});
+
+test("applyOptionalDevServices skips missing containers when starting or stopping", async () => {
+  mockedSpawnSyncTrustedText.mockReturnValue({
+    status: 0,
+    stdout: "not-found",
+    stderr: "",
+    pid: 0,
+    output: ["", "not-found", ""],
+    signal: null,
+  });
+  mockedSpawnDocker.mockImplementation((_args) => {
+    const name = String(_args[1] ?? "");
+    if (name === REDIS_INSIGHT_CONTAINER_NAME) {
+      return {
+        status: 0,
+        stdout: "true",
+        stderr: "",
+        pid: 0,
+        output: ["", "true", ""],
+        signal: null,
+      };
+    }
+    return {
+      status: 1,
+      stdout: "",
+      stderr: "",
+      pid: 0,
+      output: ["", "", ""],
+      signal: null,
+    };
+  });
+
+  await applyOptionalDevServices({
+    ...defaultOptionalSelection(),
+    redisinsight: true,
+    smtp: false,
+    ui: false,
+    website: false,
+    dbstudio: false,
+  });
+  let dockerCalls = mockedRunCaptured.mock.calls
+    .map(([cmd]) => cmd)
+    .filter((cmd): cmd is string[] => Array.isArray(cmd) && cmd.includes("docker"));
+  expect(
+    dockerCalls.some((cmd) => cmd.includes(REDIS_INSIGHT_CONTAINER_NAME)),
+  ).toBe(true);
+  expect(
+    dockerCalls.some((cmd) => cmd.includes(REDIS_INSIGHT_BRIDGE_CONTAINER_NAME)),
+  ).toBe(false);
+
+  mockedRunCaptured.mockClear();
+  await applyOptionalDevServices({
+    ...defaultOptionalSelection(),
+    redisinsight: false,
+    smtp: false,
+    ui: false,
+    website: false,
+    dbstudio: false,
+  });
+  dockerCalls = mockedRunCaptured.mock.calls
+    .map(([cmd]) => cmd)
+    .filter((cmd): cmd is string[] => Array.isArray(cmd) && cmd.includes("docker"));
+  expect(
+    dockerCalls.some(
+      (cmd) =>
+        cmd.includes("stop") && cmd.includes(REDIS_INSIGHT_CONTAINER_NAME),
+    ),
+  ).toBe(true);
+  expect(
+    dockerCalls.some((cmd) => cmd.includes(REDIS_INSIGHT_BRIDGE_CONTAINER_NAME)),
+  ).toBe(false);
+});
+
+test("applyOptionalDevServices disables a unit-only service without docker", async () => {
+  const lines: string[] = [];
+  await applyOptionalDevServices(
+    {
+      dbstudio: true,
+      smtp: true,
+      ui: false,
+      website: true,
+      redisinsight: true,
+    },
+    (line) => lines.push(line),
+  );
+  expect(
+    mockedRunCaptured.mock.calls.some(
+      ([cmd]) =>
+        Array.isArray(cmd) &&
+        cmd.includes("systemctl") &&
+        cmd.includes("disable") &&
+        cmd.includes("turbopanel-ui"),
+    ),
+  ).toBe(true);
+  expect(
+    mockedRunCaptured.mock.calls.some(
+      ([cmd]) => Array.isArray(cmd) && cmd.includes("docker"),
+    ),
+  ).toBe(false);
+  expect(lines.some((line) => line.includes("Disabling optional service"))).toBe(
+    true,
+  );
 });
 
 test("applyOptionalDevServices starts container-only services when unit is missing", async () => {

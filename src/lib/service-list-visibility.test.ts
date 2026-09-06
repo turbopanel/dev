@@ -140,3 +140,22 @@ test("sortServicesByCanonicalOrder keeps unknown ids after known ones", () => {
     "zzz",
   ]);
 });
+
+test("mergeCatalogOptionalServices returns the same list when nothing is missing", () => {
+  const services = [
+    { id: "dbstudio", label: "dbstudio", status: "running" as const },
+    { id: "smtp", label: "smtp", status: "running" as const },
+    { id: "ui", label: "ui", status: "running" as const },
+    { id: "website", label: "website", status: "running" as const },
+    { id: "redisinsight", label: "redisinsight", status: "running" as const },
+  ];
+  expect(mergeCatalogOptionalServices(services, "deno")).toBe(services);
+});
+
+test("sortServicesByCanonicalOrder ties unknown ids with localeCompare", () => {
+  const sorted = sortServicesByCanonicalOrder([
+    { id: "zeta", label: "zeta", status: "running" },
+    { id: "alpha", label: "alpha", status: "running" },
+  ]);
+  expect(sorted.map((service) => service.id)).toEqual(["alpha", "zeta"]);
+});

@@ -5,6 +5,7 @@ import {
   authorToCopyright,
   classifyLicense,
   defaultLicenseForPackageName,
+  enrichMissingPackageLicenses,
   evaluateLicensePolicy,
   fillMissingLicenses,
   fingerprintCommentValue,
@@ -40,7 +41,38 @@ function pkg(
   }
 }
 
+describe('defaultLicenseForPackageName', () => {
+  it('uses reviewed package-name defaults including scoped khroma', () => {
+    expect(defaultLicenseForPackageName('khroma')).toBe('MIT')
+    expect(defaultLicenseForPackageName('@scope/khroma')).toBe('MIT')
+    expect(defaultLicenseForPackageName('unknown-pkg')).toBeUndefined()
+  })
+})
+
 describe('packagesFromPnpmLicenses', () => {
+  it('skips nameless entries, blank versions, and empty license fallbacks', () => {
+    const packages = packagesFromPnpmLicenses(
+      {
+        MIT: [
+          { versions: ['1.0.0'], license: 'MIT' },
+          { name: 'left-pad', versions: ['', '  ', '1.3.0'], license: '' },
+          { name: 'blank-versions', license: 'MIT' },
+        ],
+      },
+      new Set(['left-pad@1.3.0']),
+    )
+    expect(packages).toEqual([
+      {
+        name: 'left-pad',
+        version: '1.3.0',
+        license: 'MIT',
+        role: 'production',
+        homepage: undefined,
+        copyright: undefined,
+      },
+    ])
+  })
+
   it('marks packages absent from the production listing as development-only', () => {
     const all = {
       MIT: [
@@ -76,6 +108,39 @@ describe('packagesFromPnpmLicenses', () => {
 })
 
 describe('packagesFromNpmLockfile', () => {
+  it('skips the root entry, missing versions, and paths without node_modules', () => {
+    const packages = packagesFromNpmLockfile({
+      packages: {
+        '': { name: 'root', version: '1.0.0' },
+        'node_modules/left-pad': { version: '1.3.0' },
+        'node_modules/': { version: '9.9.9', license: 'MIT' },
+        'vendor/odd': { version: '1.0.0', license: 'MIT' },
+        'node_modules/explicit': { name: 'renamed', version: '2.0.0', license: 'ISC' },
+        'node_modules/no-version': { license: 'MIT' },
+      },
+    })
+    expect(packages).toEqual([
+      {
+        name: 'left-pad',
+        version: '1.3.0',
+        license: '',
+        role: 'production',
+        source: 'package-lock.json',
+      },
+      {
+        name: 'renamed',
+        version: '2.0.0',
+        license: 'ISC',
+        role: 'production',
+        source: 'package-lock.json',
+      },
+    ])
+  })
+
+  it('treats a lockfile without a packages map as empty', () => {
+    expect(packagesFromNpmLockfile({})).toEqual([])
+  })
+
   it('treats lockfile dev:true as development-only', () => {
     const packages = packagesFromNpmLockfile({
       packages: {
@@ -129,6 +194,19 @@ describe('packagesFromDenoLock', () => {
       },
     ])
   })
+
+  it('skips lock ids that are not name@version', () => {
+    expect(
+      packagesFromDenoLock(
+        { jsr: { '@': {}, '@std/assert@': {}, 'no-at-sign': {} }, npm: { '@1.0.0': {} } },
+        {},
+      ),
+    ).toEqual([])
+  })
+
+  it('treats missing jsr/npm sections as empty', () => {
+    expect(packagesFromDenoLock({}, {})).toEqual([])
+  })
 })
 
 describe('packagesFromPodfileLock', () => {
@@ -144,6 +222,17 @@ describe('packagesFromPodfileLock', () => {
       'hermes-engine@0.86.2',
     ])
     expect(pods.every((row) => row.role === 'native')).toBe(true)
+  })
+
+  it('skips non-pod lines and duplicate coordinates', () => {
+    const text = `PODS:
+  - Expo (57.0.14)
+DEPENDENCIES:
+  - Expo (57.0.14)
+`
+    const pods = packagesFromPodfileLock(text)
+    expect(pods).toHaveLength(1)
+    expect(pods[0]?.name).toBe('Expo')
   })
 })
 
@@ -184,6 +273,32 @@ describe('classifyLicense', () => {
     expect(classifyLicense('LGPL-3.0-or-later', 'production')).toBe(
       'copyleft-production',
     )
+    expect(classifyLicense('LGPL-3.0-or-later', 'production', '@img/sharp-linux-x64')).toBeNull()
+    for (const license of [
+      'GPL-2.0-only',
+      'EUPL-1.2',
+      'OSL-3.0',
+      'CPL-1.0',
+      'Sleepycat',
+      'CDDL-1.0',
+    ]) {
+      expect(classifyLicense(license, 'production')).toBe('copyleft-production')
+    }
+  })
+
+  it('returns the first failing OR operand when every alternative is rejected', () => {
+    expect(classifyLicense('GPL-3.0-only OR LicenseRef-Proprietary', 'production')).toBe(
+      'copyleft-production',
+    )
+  })
+
+  it('walks nested SPDX parentheses when splitting OR/AND', () => {
+    expect(
+      classifyLicense('(MIT OR (GPL-3.0-only AND LicenseRef-X))', 'production'),
+    ).toBeNull()
+    expect(
+      classifyLicense('(GPL-3.0-only AND (LicenseRef-X OR LicenseRef-Y))', 'production'),
+    ).toBe('copyleft-production')
   })
 
   it('defaults @std and @tamagui package names to MIT', () => {
@@ -210,9 +325,26 @@ describe('classifyLicense', () => {
   it('rejects unreviewed classes', () => {
     expect(classifyLicense('', 'production')).toBe('missing')
     expect(classifyLicense('UNKNOWN', 'production')).toBe('missing')
+    expect(classifyLicense('NONE', 'production')).toBe('missing')
+    expect(classifyLicense('NOASSERTION', 'production')).toBe('missing')
+    expect(classifyLicense('UNLICENSED LICENSE', 'production')).toBe('missing')
     expect(classifyLicense('SEE LICENSE IN LICENSE.md', 'production')).toBe(
       'see-license-in',
     )
+    expect(classifyLicense('SEE TEXT', 'production')).toBe('custom')
+    expect(classifyLicense('SSPL-1.0', 'production')).toBe('source-available')
+    expect(classifyLicense('FSL-1.1-MIT', 'production')).toBe('source-available')
+    expect(classifyLicense('Fair Source License', 'production')).toBe(
+      'source-available',
+    )
+    expect(classifyLicense('Elastic-2.0', 'production')).toBe('source-available')
+    expect(classifyLicense('PolyForm-Noncommercial-1.0.0', 'production')).toBe(
+      'noncommercial',
+    )
+    expect(classifyLicense('non-commercial-custom', 'production')).toBe(
+      'noncommercial',
+    )
+    expect(classifyLicense('commons-clause', 'production')).toBe('noncommercial')
     expect(classifyLicense('LicenseRef-Proprietary', 'production')).toBe('custom')
     expect(classifyLicense('CC-BY-NC-4.0', 'production')).toBe('noncommercial')
     expect(classifyLicense('BUSL-1.1', 'production')).toBe('source-available')
@@ -281,6 +413,38 @@ describe('renderThirdPartyNotices', () => {
     expect(markdown).toContain('does not replace that file')
   })
 
+  it('renders extra preamble, source, and missing-license placeholders', () => {
+    const markdown = renderThirdPartyNotices(
+      [
+        pkg({
+          name: 'mystery',
+          license: '',
+          source: 'vendor/tree',
+          role: 'orchestration',
+        }),
+        pkg({
+          name: 'native-only',
+          license: 'MIT',
+          role: 'native',
+        }),
+      ],
+      {
+        ...renderOpts,
+        extraPreamble: 'Keep reviewed Galaxy pins.',
+        lockfileFingerprints: {
+          'deno.lock': 'sha256:def',
+          'pnpm-lock.yaml': 'sha256:abc',
+        },
+      },
+    )
+    expect(markdown).toContain('Keep reviewed Galaxy pins.')
+    expect(markdown).toContain('License: (missing)')
+    expect(markdown).toContain('Source: vendor/tree')
+    expect(markdown).toContain('Orchestration tooling')
+    expect(markdown).toContain('Native dependencies')
+    expect(markdown).toContain('deno.lock sha256:def')
+  })
+
   it('includes upstream NOTICE file excerpts', () => {
     const markdown = renderThirdPartyNotices(
       [
@@ -330,6 +494,32 @@ describe('helpers', () => {
     expect(merged[0]?.role).toBe('production')
   })
 
+  it('keeps the stronger role and fills missing metadata from the weaker row', () => {
+    const merged = mergeNoticePackages([
+      [
+        pkg({
+          name: 'yaml',
+          license: 'ISC',
+          role: 'development',
+          noticeText: 'NOTICE',
+          copyright: 'IANA',
+          homepage: 'https://yaml.org',
+        }),
+      ],
+      [
+        pkg({
+          name: 'yaml',
+          license: 'ISC',
+          role: 'production',
+        }),
+      ],
+    ])
+    expect(merged[0]?.role).toBe('production')
+    expect(merged[0]?.noticeText).toBe('NOTICE')
+    expect(merged[0]?.copyright).toBe('IANA')
+    expect(merged[0]?.homepage).toBe('https://yaml.org')
+  })
+
   it('attaches licenses from a lookup map', () => {
     const attached = attachLicensesFromMap(
       [pkg({ name: 'Expo', version: '57.0.14', license: '', role: 'native' })],
@@ -338,8 +528,26 @@ describe('helpers', () => {
     expect(attached[0]?.license).toBe('MIT')
   })
 
+  it('leaves packages unchanged when the license map has no match', () => {
+    const attached = attachLicensesFromMap(
+      [pkg({ name: 'Expo', version: '57.0.14', license: '', role: 'native' })],
+      { other: 'MIT' },
+    )
+    expect(attached[0]?.license).toBe('')
+  })
+
+  it('matches a license map by package name when the coordinate is absent', () => {
+    const attached = attachLicensesFromMap(
+      [pkg({ name: 'Expo', version: '57.0.14', license: '', role: 'native' })],
+      { Expo: 'MIT' },
+    )
+    expect(attached[0]?.license).toBe('MIT')
+  })
+
   it('reads author objects and fingerprints', () => {
     expect(authorToCopyright({ name: 'Ada' })).toBe('Ada')
+    expect(authorToCopyright({ name: '  ' })).toBeUndefined()
+    expect(authorToCopyright({})).toBeUndefined()
     expect(authorToCopyright('  ')).toBeUndefined()
     expect(fingerprintCommentValue('deadbeef')).toBe('sha256:deadbeef')
   })
@@ -355,11 +563,22 @@ describe('helpers', () => {
       ],
     })
     expect(paths.get('next@16.2.9')).toBe('node_modules/next')
+    expect(
+      pnpmPackagePaths({
+        MIT: [{ name: 'skip', versions: ['1.0.0'] }, { versions: ['1.0.0'], paths: ['x'] }],
+      }).size,
+    ).toBe(0)
     const withNotice = attachNoticeText(
       pkg({ name: 'next', version: '16.2.9', license: 'Apache-2.0' }),
       '  Apache Next NOTICE  ',
     )
     expect(withNotice.noticeText).toBe('Apache Next NOTICE')
+    expect(
+      attachNoticeText(
+        pkg({ name: 'next', version: '16.2.9', license: 'Apache-2.0' }),
+        '   ',
+      ).noticeText,
+    ).toBeUndefined()
   })
 
   it('classifies orchestration pins as the reviewed GPL role', () => {
@@ -382,6 +601,40 @@ describe('fillMissingLicenses', () => {
     )
     expect(filled[0]?.license).toBe('ISC')
     expect(filled[1]?.license).toBe('MIT')
+  })
+
+  it('falls back to a reviewed package default when lookup is blank', async () => {
+    const filled = await fillMissingLicenses(
+      [pkg({ name: '@std/path', license: 'UNKNOWN' })],
+      async () => '  ',
+    )
+    expect(filled[0]?.license).toBe('MIT')
+  })
+
+  it('keeps the empty license when lookup and defaults both miss', async () => {
+    const filled = await fillMissingLicenses(
+      [pkg({ name: 'mystery', license: '' })],
+      async () => '',
+    )
+    expect(filled[0]?.license).toBe('')
+  })
+})
+
+describe('enrichMissingPackageLicenses', () => {
+  it('fills unknown licenses from the resolver or a reviewed default', () => {
+    const enriched = enrichMissingPackageLicenses(
+      [
+        pkg({ name: 'yaml', license: 'ISC' }),
+        pkg({ name: 'mystery', license: '' }),
+        pkg({ name: '@std/bytes', license: 'UNKNOWN' }),
+        pkg({ name: 'still-missing', license: '' }),
+      ],
+      (row) => (row.name === 'mystery' ? ' Apache-2.0 ' : undefined),
+    )
+    expect(enriched[0]?.license).toBe('ISC')
+    expect(enriched[1]?.license).toBe('Apache-2.0')
+    expect(enriched[2]?.license).toBe('MIT')
+    expect(enriched[3]?.license).toBe('')
   })
 })
 

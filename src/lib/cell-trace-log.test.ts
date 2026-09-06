@@ -1,10 +1,18 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, openSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 const tempDirs: string[] = [];
 const instancePaths: string[] = [];
+
+vi.mock("node:fs", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs")>();
+  return {
+    ...actual,
+    openSync: vi.fn(actual.openSync),
+  };
+});
 
 vi.mock("./service-log.ts", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./service-log.ts")>();
@@ -34,6 +42,8 @@ import {
 } from "./cell-trace-log.ts";
 import { readServiceLogFileStat } from "./service-log.ts";
 
+const fsActual = await vi.importActual<typeof import("node:fs")>("node:fs");
+
 beforeEach(() => {
   const dir = mkdtempSync(join(tmpdir(), "tp-cell-trace-log-"));
   tempDirs.push(dir);
@@ -45,6 +55,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.mocked(openSync).mockImplementation(fsActual.openSync);
   for (const dir of tempDirs.splice(0)) {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -99,4 +110,44 @@ test("readCellTraceLogTail respects maxLines on the filtered set", () => {
   expect(lines).toHaveLength(2);
   expect(lines[0]?.text).toContain("line-3");
   expect(lines[1]?.text).toContain("line-4");
+});
+
+test("readCellTraceLogTail skips missing log paths", () => {
+  const missing = join(tempDirs[0]!, "gone.log");
+  instancePaths.splice(0, instancePaths.length, missing, instancePaths[1]!);
+  writeFileSync(instancePaths[1]!, "kept daemon-cell line\n");
+  const lines = readCellTraceLogTail(50);
+  expect(lines.map((line) => line.text)).toEqual(["kept daemon-cell line"]);
+});
+
+test("readCellTraceLogTail treats an unreadable path as empty", () => {
+  const locked = join(tempDirs[0]!, "locked.log");
+  writeFileSync(locked, "secret daemon-cell event\n");
+  instancePaths.splice(0, instancePaths.length, locked);
+  vi.mocked(openSync).mockImplementation((path, flags, mode) => {
+    if (String(path) === locked) {
+      throw new Error("EACCES");
+    }
+    return fsActual.openSync(path, flags, mode);
+  });
+  const lines = readCellTraceLogTail(50);
+  expect(lines[0]?.text).toContain("No cell trace lines yet");
+});
+
+test("readCellTraceLogTail drops a partial first line past the tail window", () => {
+  const keep = "kept-line daemon-cell event\n";
+  writeFileSync(
+    instancePaths[1]!,
+    `PARTIAL-NO-NEWLINE${"x".repeat(70 * 1024)}\n${keep}`,
+  );
+  const lines = readCellTraceLogTail(10);
+  expect(lines.some((line) => line.text.includes("PARTIAL"))).toBe(false);
+  expect(lines.some((line) => line.text.includes("kept-line"))).toBe(true);
+});
+
+test("readCellTraceLogTail returns empty-state when the tail has no newline", () => {
+  writeFileSync(instancePaths[1]!, `${"y".repeat(70 * 1024)}daemon-cell-no-nl`);
+  const lines = readCellTraceLogTail(10);
+  expect(lines).toHaveLength(1);
+  expect(lines[0]?.text).toContain("No cell trace lines yet");
 });

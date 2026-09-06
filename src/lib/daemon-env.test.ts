@@ -3,6 +3,8 @@ import { mergeEnvFile, readEnvFile } from "./env-file.ts";
 import {
   buildDaemonBaseEnvEntries,
   isDeveloperSurfaceInstance,
+  isDevInstanceEnabled,
+  writeDaemonBaseEnv,
   writeDaemonInstanceEnv,
 } from "./daemon-env.ts";
 import { daemonRepoPath, platformCaCertPath } from "./paths.ts";
@@ -59,4 +61,52 @@ test("writeDaemonInstanceEnv workers mode points TURBOPANEL_INSTANCE_CA at the d
     }),
     expect.objectContaining({ removeKeys: expect.any(Array) }),
   );
+});
+
+test("writeDaemonBaseEnv writes identity keys and strips the instance opt-in", () => {
+  writeDaemonBaseEnv({ EXTRA: "1" });
+  expect(vi.mocked(mergeEnvFile)).toHaveBeenCalledWith(
+    expect.any(String),
+    expect.objectContaining({
+      TURBOPANEL_MODE: "development",
+      EXTRA: "1",
+    }),
+    expect.objectContaining({
+      removeKeys: ["TURBOPANEL_DEV_INSTANCE"],
+    }),
+  );
+});
+
+test("writeDaemonInstanceEnv deno extra removes workers URL keys", () => {
+  writeDaemonInstanceEnv({ TURBOPANEL_INSTANCE_RUNTIME: "deno" });
+  const call = vi.mocked(mergeEnvFile).mock.calls.at(-1);
+  if (call === undefined) {
+    throw new TypeError("expected mergeEnvFile call");
+  }
+  expect(call[1]).not.toHaveProperty("TURBOPANEL_INSTANCE_URL");
+  expect(call[2]).toEqual({
+    removeKeys: ["TURBOPANEL_INSTANCE_URL", "TURBOPANEL_INSTANCE_CA"],
+  });
+});
+
+test("writeDaemonInstanceEnv without a runtime extra uses the existing daemon.env runtime", () => {
+  vi.mocked(readEnvFile).mockReturnValue("TURBOPANEL_INSTANCE_RUNTIME=workers\n");
+  writeDaemonInstanceEnv();
+  expect(vi.mocked(mergeEnvFile)).toHaveBeenCalledWith(
+    expect.any(String),
+    expect.objectContaining({
+      TURBOPANEL_INSTANCE_CA: platformCaCertPath(),
+    }),
+    expect.any(Object),
+  );
+});
+
+test("isDevInstanceEnabled is true only when TURBOPANEL_DEV_INSTANCE=1", () => {
+  const mockedReadEnvFile = vi.mocked(readEnvFile);
+  mockedReadEnvFile.mockReturnValue("TURBOPANEL_DEV_INSTANCE=1\n");
+  expect(isDevInstanceEnabled()).toBe(true);
+  mockedReadEnvFile.mockReturnValue("TURBOPANEL_DEV_INSTANCE=0\n");
+  expect(isDevInstanceEnabled()).toBe(false);
+  mockedReadEnvFile.mockReturnValue("");
+  expect(isDevInstanceEnabled()).toBe(false);
 });

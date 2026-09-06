@@ -59,3 +59,13 @@ test("aptGetInstall serializes concurrent callers", async () => {
   expect(order).toEqual(["start", "end", "start", "end"]);
   expect(mockedRunCaptured).toHaveBeenCalledTimes(2);
 });
+
+test("aptGetInstall keeps serializing after a rejected call", async () => {
+  mockedRunCaptured
+    .mockRejectedValueOnce(new Error("apt failed"))
+    .mockResolvedValueOnce(0);
+
+  await expect(aptGetInstall(["curl"])).rejects.toThrow("apt failed");
+  await expect(aptGetInstall(["tar"])).resolves.toBe(0);
+  expect(mockedRunCaptured).toHaveBeenCalledTimes(2);
+});

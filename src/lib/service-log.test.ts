@@ -169,6 +169,30 @@ test("readServiceLogFileStat records readable file sizes", () => {
   expect(readServiceLogFileStat("ui")).toEqual({ [logPath]: 3 });
 });
 
+test("readServiceLogFileStat ignores sudo stat failures and non-numeric sizes", () => {
+  const missing = join(tmpdir(), "tp-service-log-stat-fail.log");
+  SERVICE_FILE_LOG_PATHS.ui = [missing];
+  mockedSpawnSyncTrustedText.mockReturnValueOnce(failedSpawn());
+  expect(readServiceLogFileStat("ui")).toEqual({});
+
+  mockedSpawnSyncTrustedText.mockReturnValueOnce(okSpawn("not-a-size\n"));
+  expect(readServiceLogFileStat("ui")).toEqual({});
+});
+
+test("readServiceLogTail skips empty files", () => {
+  const dir = mkdtempSync(join(tmpdir(), "tp-service-log-empty-"));
+  tempDirs.push(dir);
+  const logPath = join(dir, "instance.log");
+  writeFileSync(logPath, "");
+  SERVICE_FILE_LOG_PATHS.instance = [logPath];
+  mockedSpawnSyncTrustedText.mockReturnValue(
+    okSpawn("journal after empty file\n"),
+  );
+
+  const lines = readServiceLogTail("instance", 20);
+  expect(lines.map((line) => line.text)).toEqual(["journal after empty file"]);
+});
+
 test("readServiceLogFileStat falls back to sudo stat when open fails", () => {
   const missing = join(tmpdir(), "tp-service-log-no-such.log");
   SERVICE_FILE_LOG_PATHS.ui = [missing];

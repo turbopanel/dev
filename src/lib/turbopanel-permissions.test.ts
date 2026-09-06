@@ -167,3 +167,73 @@ test("refreshDevPermissionsQuietly no-ops when not in development", () => {
   refreshDevPermissionsQuietly();
   expect(mockedRunCaptured).not.toHaveBeenCalled();
 });
+
+test("ensureFhsTreeOwnership no-ops when identity vanishes after the env check", async () => {
+  mockedTryResolve
+    .mockReturnValueOnce({ user: "dev", uid: 1000, gid: 1000 })
+    .mockReturnValueOnce(null);
+  mockedRunCaptured.mockClear();
+  await ensureFhsTreeOwnership();
+  expect(mockedRunCaptured).not.toHaveBeenCalled();
+});
+
+test("ensureDevUserDockerAccess treats a docker socket as present", async () => {
+  mockedTryResolve.mockReturnValue({ user: "dev", uid: 1000, gid: 1000 });
+  mockedSpawnSync.mockImplementation((command) => {
+    const cmd = String(command);
+    if (cmd === "getent") {
+      return spawnRet(1);
+    }
+    if (cmd === "test") {
+      return spawnRet(0);
+    }
+    if (cmd === "sudo") {
+      return spawnRet(0, "changed\n");
+    }
+    return spawnRet(1);
+  });
+  await expect(ensureDevUserDockerAccess()).resolves.toBe(true);
+});
+
+test("ensureDevUserDockerAccess falls back to command -v docker", async () => {
+  mockedTryResolve.mockReturnValue({ user: "dev", uid: 1000, gid: 1000 });
+  mockedSpawnSync.mockImplementation((command) => {
+    const cmd = String(command);
+    if (cmd === "sudo") {
+      return spawnRet(0, undefined as unknown as string);
+    }
+    if (cmd === "sh") {
+      return spawnRet(0);
+    }
+    return spawnRet(1);
+  });
+  await expect(ensureDevUserDockerAccess()).resolves.toBe(false);
+});
+
+test("refreshDevPermissionsQuietly refreshes ownership in development", async () => {
+  mockedTryResolve.mockReturnValue({ user: "dev", uid: 1000, gid: 1000 });
+  mockedRunCaptured.mockResolvedValue(0);
+  mockedSpawnSync.mockImplementation((command) => {
+    const cmd = String(command);
+    if (cmd === "getent") {
+      return spawnRet(0, "docker:x:999:");
+    }
+    if (cmd === "sudo") {
+      return spawnRet(0, "changed\n");
+    }
+    return spawnRet(1);
+  });
+  refreshDevPermissionsQuietly();
+  await vi.waitFor(() => {
+    expect(mockedRunCaptured).toHaveBeenCalled();
+  });
+});
+
+test("refreshDevPermissionsQuietly swallows refresh failures", async () => {
+  mockedTryResolve.mockReturnValue({ user: "dev", uid: 1000, gid: 1000 });
+  mockedRunCaptured.mockRejectedValue(new Error("sudo failed"));
+  refreshDevPermissionsQuietly();
+  await vi.waitFor(() => {
+    expect(mockedRunCaptured).toHaveBeenCalled();
+  });
+});

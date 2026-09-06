@@ -129,3 +129,67 @@ test("LogFileTailer ignores non-finite sudo stat output", () => {
   tailer.drain((line) => lines.push(line));
   expect(lines).toEqual([]);
 });
+
+test("LogFileTailer is a no-op when sudo tail fails after a size increase", () => {
+  const missing = join(tmpdir(), "tp-log-tail-sudo-tail-fail.log");
+  let size = "0";
+  mockedSpawn.mockImplementation((_cmd, args) => {
+    if (args.includes("stat")) {
+      return okSpawn(`${size}\n`);
+    }
+    return {
+      status: 1,
+      stdout: undefined as unknown as string,
+      stderr: "",
+      pid: 0,
+      output: [],
+      signal: null,
+    };
+  });
+  const tailer = new LogFileTailer([missing]);
+  size = "20";
+  const lines: string[] = [];
+  tailer.drain((line) => lines.push(line));
+  expect(lines).toEqual([]);
+});
+
+test("LogFileTailer ignores an empty sudo tail chunk", () => {
+  const missing = join(tmpdir(), "tp-log-tail-empty-chunk.log");
+  let size = "0";
+  mockedSpawn.mockImplementation((_cmd, args) => {
+    if (args.includes("stat")) {
+      return okSpawn(`${size}\n`);
+    }
+    if (args.includes("tail")) {
+      return okSpawn("");
+    }
+    return {
+      status: 1,
+      stdout: "",
+      stderr: "",
+      pid: 0,
+      output: [],
+      signal: null,
+    };
+  });
+  const tailer = new LogFileTailer([missing]);
+  size = "8";
+  const lines: string[] = [];
+  tailer.drain((line) => lines.push(line));
+  expect(lines).toEqual([]);
+});
+
+test("LogFileTailer treats a failed sudo stat as a missing file", () => {
+  mockedSpawn.mockReturnValue({
+    status: 1,
+    stdout: "",
+    stderr: "",
+    pid: 0,
+    output: [],
+    signal: null,
+  });
+  const tailer = new LogFileTailer([join(tmpdir(), "tp-log-tail-stat-fail.log")]);
+  const lines: string[] = [];
+  tailer.drain((line) => lines.push(line));
+  expect(lines).toEqual([]);
+});

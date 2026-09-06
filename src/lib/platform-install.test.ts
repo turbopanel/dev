@@ -371,6 +371,35 @@ describe("ensureAllGitHooksPaths", () => {
     expect(setCalls).toHaveLength(0);
   });
 
+  it("treats missing git stdout and stderr as empty strings", () => {
+    const root = tempDir();
+    stubCheckoutRoot(root);
+    const target = join(root, "website");
+    mkdirSync(target, { recursive: true });
+    writePreCommitHook(target);
+    mockedSpawnSyncTrustedText.mockImplementation((_cmd, args) => {
+      const gitArgs = args as string[];
+      if (gitArgs.includes("rev-parse") || gitArgs.includes("--get")) {
+        return {
+          status: 0,
+          stdout: undefined as unknown as string,
+          stderr: undefined as unknown as string,
+          pid: 1,
+          output: ["", "", ""],
+          signal: null,
+        };
+      }
+      if (gitArgs.at(-1) === ".githooks") return gitTextResult(true);
+      return gitTextResult(false);
+    });
+    const steps: Array<{ label: string; status: string }> = [];
+
+    ensureAllGitHooksPaths((label, status) => steps.push({ label, status }));
+
+    expect(steps.some((step) => step.label.includes(target) && step.status === "ok"))
+      .toBe(true);
+  });
+
   it("throws when setting core.hooksPath fails", () => {
     const root = tempDir();
     stubCheckoutRoot(root);

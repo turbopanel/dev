@@ -102,6 +102,10 @@ vi.mock("../lib/optional-dev-services.ts", () => ({
   readOptionalDevServices: vi.fn(),
 }));
 
+vi.mock("../lib/duckdb-ui.ts", () => ({
+  openDuckDbUi: vi.fn(),
+}));
+
 import { resolveDevEnvStartupPlan } from "../lib/dev-env-readiness.ts";
 import { canRunServiceAction, runServiceAction } from "../lib/service-actions.ts";
 import { watchServiceRestart } from "../lib/service-restart.ts";
@@ -119,6 +123,7 @@ import {
   readOptionalDevServices,
 } from "../lib/optional-dev-services.ts";
 import { refreshDevPermissionsQuietly } from "../lib/turbopanel-permissions.ts";
+import { openDuckDbUi } from "../lib/duckdb-ui.ts";
 
 function svc(
   id: string,
@@ -209,6 +214,8 @@ describe("useConsoleApp", () => {
     vi.mocked(readOptionalDevServices).mockReset();
     vi.mocked(readOptionalDevServices).mockReturnValue(harness.optional);
     vi.mocked(refreshDevPermissionsQuietly).mockReset();
+    vi.mocked(openDuckDbUi).mockReset();
+    vi.mocked(openDuckDbUi).mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -377,6 +384,12 @@ describe("useConsoleApp", () => {
   });
 
   it("toggles cell trace and restarts instance with an overlay", async () => {
+    vi.mocked(watchServiceRestart).mockImplementation(
+      async (_serviceId, _label, appendLog) => {
+        appendLog({ text: "restarting", time: "t" });
+        return true;
+      },
+    );
     const app = await mountApp();
     await app.handleDaemonAction("toggle-cell-trace");
     expect(setCellTraceEnabled).toHaveBeenCalledWith(true);
@@ -519,5 +532,44 @@ describe("useConsoleApp", () => {
     app.confirmOptionalServices(harness.optional);
     expect(harness.startDevEnvConverge).not.toHaveBeenCalled();
     expect(applyOptionalDevServices).not.toHaveBeenCalled();
+  });
+
+  it("opens the DuckDB UI from the developer menu", async () => {
+    const app = await mountApp();
+    await app.handleDaemonAction("open-duckdb-ui");
+    expect(openDuckDbUi).toHaveBeenCalled();
+    expect((await settle()).activeArea).toBe("developer");
+  });
+
+  it("no-ops confirmDestructiveAction and restart when nothing is pending", async () => {
+    const app = await mountApp();
+    app.confirmDestructiveAction();
+    await app.handleServiceAction("missing", "restart");
+    expect((await settle()).pendingDestructiveAction).toBeNull();
+    expect((await settle()).pendingRestart).toBeNull();
+    expect(watchServiceRestart).not.toHaveBeenCalled();
+  });
+
+  it("skips a confirmed restart after the service row disappears", async () => {
+    const app = await mountApp();
+    await app.handleServiceAction("ui", "restart");
+    expect((await settle()).pendingRestart?.serviceId).toBe("ui");
+    harness.services = [svc("daemon")];
+    mounted?.rerender();
+    await mounted?.flush();
+    (await settle()).confirmServiceRestart();
+    await mounted?.flush();
+    expect(watchServiceRestart).not.toHaveBeenCalled();
+  });
+
+  it("restarts instance without a visible instance row", async () => {
+    harness.services = [svc("daemon")];
+    const app = await mountApp();
+    await app.handleDaemonAction("toggle-cell-trace");
+    expect(watchServiceRestart).toHaveBeenCalledWith(
+      "instance",
+      "instance",
+      expect.any(Function),
+    );
   });
 });

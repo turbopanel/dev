@@ -40,6 +40,7 @@ import {
   lookupHostDenoBin,
   orchestrationActionCommand,
   resolveBootstrapDenoBin,
+  resolveDenoBinVersion,
   resolveHostDenoBin,
 } from "./daemon-exec.ts";
 
@@ -150,6 +151,19 @@ describe("isProductionRuntime", () => {
     expect(isProductionRuntime()).toBe(false);
     vi.stubEnv("TURBOPANEL_RUNTIME", "development");
     expect(isProductionRuntime()).toBe(false);
+  });
+});
+
+describe("resolveDenoBinVersion", () => {
+  it("returns null when --version fails or stdout is unparseable", () => {
+    mockedSpawnSync.mockReturnValue(syncResult(1, "nope"));
+    expect(resolveDenoBinVersion("/missing/deno")).toBeNull();
+
+    mockedSpawnSync.mockReturnValue(syncResult(0, null));
+    expect(resolveDenoBinVersion("/missing/deno")).toBeNull();
+
+    mockedSpawnSync.mockReturnValue(syncResult(0, "not-deno 9.9.9\n"));
+    expect(resolveDenoBinVersion("/missing/deno")).toBeNull();
   });
 });
 

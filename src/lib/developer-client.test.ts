@@ -249,6 +249,30 @@ describe("readInstanceSecret / instanceSecretReadError", () => {
     expect(err.message).toContain(instanceSecretsPath());
   });
 
+  it("instanceSecretReadError treats a throw without errno as unreadable", () => {
+    mockedReadFileSync.mockImplementation(() => {
+      throw new Error("disk melted");
+    });
+    const err = instanceSecretReadError();
+    expect(err.message).toContain("unreadable or unparseable instance secrets keyring");
+  });
+
+  it("instanceSecretReadError names the console user when USER is unset", () => {
+    const prev = process.env.USER;
+    delete process.env.USER;
+    try {
+      mockFsMap([[instanceSecretsPath(), fsError("EACCES")]]);
+      const err = instanceSecretReadError();
+      expect(err.message).toContain("root:dev-user");
+    } finally {
+      if (prev === undefined) {
+        delete process.env.USER;
+      } else {
+        process.env.USER = prev;
+      }
+    }
+  });
+
   it("instanceSecretReadError covers readable-but-parseable contradiction path", () => {
     mockFsMap([[instanceSecretsPath(), `2:${CURRENT_SECRET}`]]);
     // readInstanceSecret succeeds, so the final fallback branch is exercised
@@ -399,5 +423,23 @@ describe("developerFetch sync helpers", () => {
     await expect(syncDevToAllDaemons()).rejects.toThrow(
       "instance Unix socket unavailable (/run/turbopanel/instance.sock): connect ENOENT",
     );
+  });
+
+  it("POSTs startDuckdbUi to the metrics duckdb-ui route", async () => {
+    vi.doMock("./daemon-env.ts", () => ({
+      readInstanceRuntime: () => "deno",
+    }));
+    mockFsMap([[instanceSecretsPath(), `1:${CURRENT_SECRET}`]]);
+    mockSocketHttpResponse(200, JSON.stringify({ ok: true, port: 4213 }));
+    const { startDuckdbUi: startUi } = await import("./developer-client.ts");
+    await expect(startUi()).resolves.toEqual({ ok: true, port: 4213 });
+    const options = mockedHttpRequest.mock.calls[0]?.[0];
+    if (options === undefined || typeof options !== "object") {
+      throw new TypeError("expected duckdb-ui http.request options");
+    }
+    expect(options).toMatchObject({
+      path: "/api/developer/v1/metrics/duckdb-ui",
+      method: "POST",
+    });
   });
 });

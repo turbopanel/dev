@@ -110,6 +110,127 @@ describe("resolveDevIdentity", () => {
     }
   });
 
+  it.each([
+    {
+      name: "a short or invalid passwd line from getent",
+      stdout: "broken:x:not-a-uid\n",
+    },
+    {
+      name: "NaN uid/gid fields even when the line has four columns",
+      stdout: "user:x:abc:def::/home/user:/bin/sh\n",
+    },
+    {
+      name: "getent success with empty stdout",
+      stdout: "",
+    },
+  ])("rejects $name", async ({ stdout }) => {
+    vi.resetModules();
+    vi.doMock("./spawn-trusted.ts", () => ({
+      spawnSyncTrustedText: vi.fn(() => ({
+        status: 0,
+        stdout,
+        stderr: "",
+        pid: 1,
+        output: ["", stdout, ""],
+        signal: null,
+      })),
+    }));
+    const getuid = vi.spyOn(process, "getuid").mockReturnValue(1000);
+    try {
+      const { resolveDevIdentity: resolve, DevIdentityError: Err } = await import(
+        "./dev-identity.ts"
+      );
+      expect(() => resolve()).toThrow(Err);
+    } finally {
+      getuid.mockRestore();
+      vi.resetModules();
+    }
+  });
+
+  it("rejects SUDO_USER that resolves to root", async () => {
+    vi.resetModules();
+    vi.doMock("./spawn-trusted.ts", () => ({
+      spawnSyncTrustedText: vi.fn(() => passwdLine("root", 0, 0)),
+    }));
+    const getuid = vi.spyOn(process, "getuid").mockReturnValue(0);
+    const prev = process.env.SUDO_USER;
+    process.env.SUDO_USER = "rootish";
+    try {
+      const { resolveDevIdentity: resolve, DevIdentityError: Err } = await import(
+        "./dev-identity.ts"
+      );
+      expect(() => resolve()).toThrow(Err);
+    } finally {
+      getuid.mockRestore();
+      if (prev === undefined) {
+        delete process.env.SUDO_USER;
+      } else {
+        process.env.SUDO_USER = prev;
+      }
+      vi.resetModules();
+    }
+  });
+
+  it("rejects a non-root UID whose passwd entry is root", async () => {
+    vi.resetModules();
+    vi.doMock("./spawn-trusted.ts", () => ({
+      spawnSyncTrustedText: vi.fn(() => passwdLine("root", 0, 0)),
+    }));
+    const getuid = vi.spyOn(process, "getuid").mockReturnValue(1000);
+    try {
+      const { resolveDevIdentity: resolve, DevIdentityError: Err } = await import(
+        "./dev-identity.ts"
+      );
+      expect(() => resolve()).toThrow(Err);
+    } finally {
+      getuid.mockRestore();
+      vi.resetModules();
+    }
+  });
+
+  it("rejects when getgid is unavailable", async () => {
+    vi.resetModules();
+    vi.doMock("./spawn-trusted.ts", () => ({
+      spawnSyncTrustedText: vi.fn(() => passwdLine("vagrant", 1000, 1000)),
+    }));
+    const getuid = vi.spyOn(process, "getuid").mockReturnValue(1000);
+    const getgid = vi.spyOn(process, "getgid").mockReturnValue(-1);
+    try {
+      const { resolveDevIdentity: resolve, DevIdentityError: Err } = await import(
+        "./dev-identity.ts"
+      );
+      expect(() => resolve()).toThrow(Err);
+    } finally {
+      getuid.mockRestore();
+      getgid.mockRestore();
+      vi.resetModules();
+    }
+  });
+
+  it("rejects root when SUDO_USER is the root account", async () => {
+    vi.resetModules();
+    vi.doMock("./spawn-trusted.ts", () => ({
+      spawnSyncTrustedText: vi.fn(() => passwdLine("root", 0, 0)),
+    }));
+    const getuid = vi.spyOn(process, "getuid").mockReturnValue(0);
+    const prev = process.env.SUDO_USER;
+    process.env.SUDO_USER = "root";
+    try {
+      const { resolveDevIdentity: resolve, DevIdentityError: Err } = await import(
+        "./dev-identity.ts"
+      );
+      expect(() => resolve()).toThrow(Err);
+    } finally {
+      getuid.mockRestore();
+      if (prev === undefined) {
+        delete process.env.SUDO_USER;
+      } else {
+        process.env.SUDO_USER = prev;
+      }
+      vi.resetModules();
+    }
+  });
+
   it("tryResolveDevIdentity returns null on failure", async () => {
     vi.resetModules();
     vi.doMock("./spawn-trusted.ts", () => ({

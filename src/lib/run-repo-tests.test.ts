@@ -1,4 +1,7 @@
-import { expect, test } from "vitest";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, expect, test, vi } from "vitest";
 import {
   buildTestCommand,
   findTestRepo,
@@ -10,6 +13,25 @@ import {
   testRunnerPathEnv,
 } from "./run-repo-tests.ts";
 import { RUN_CAPTURED_ABORTED_EXIT } from "./install-output.ts";
+import { NODE_BIN, PNPM_BIN, RUNTIMES_DIR } from "./paths.ts";
+
+const tempRoots: string[] = [];
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+  for (const root of tempRoots.splice(0)) {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+function stubCheckoutRoot(root: string): void {
+  vi.stubEnv("TURBOPANEL_DEV_ROOT", root);
+  vi.stubEnv("TURBOPANEL_DAEMON_REPO", join(root, "turbopaneld"));
+  vi.stubEnv("TURBOPANEL_INSTANCE_REPO", join(root, "turbopanel"));
+  vi.stubEnv("TURBOPANEL_UI_REPO", join(root, "ui"));
+  vi.stubEnv("TURBOPANEL_WEBSITE_REPO", join(root, "website"));
+  vi.stubEnv("TURBOPANEL_DEV_REPO", join(root, "dev"));
+}
 
 test("TEST_REPO_CATALOG covers every checkout dir with at least one suite", () => {
   const ids = TEST_REPO_CATALOG.map((repo) => repo.id).sort((a, b) =>
@@ -106,6 +128,69 @@ test("testRunnerPathEnv defaults to trusted FHS dirs, not the user PATH", () => 
   expect(parts).not.toContain("/home/vagrant/.local/bin");
 });
 
+test("testRunnerPathEnv treats a missing or empty base PATH as empty", () => {
+  expect(testRunnerPathEnv(undefined).PATH.split(":")[0]).toMatch(
+    /\/node\/current\/bin$/,
+  );
+  expect(testRunnerPathEnv("").PATH.split(":")[0]).toMatch(
+    /\/node\/current\/bin$/,
+  );
+});
+
+test("testRunnerPathEnv does not duplicate vendored prefixes already on PATH", () => {
+  const nodePrefix = `${RUNTIMES_DIR}/node/current/bin`;
+  const denoPrefix = `${RUNTIMES_DIR}/deno/current`;
+  const env = testRunnerPathEnv(`${nodePrefix}:${denoPrefix}:/usr/bin`);
+  expect(env.PATH.split(":").filter((part) => part === nodePrefix)).toHaveLength(
+    1,
+  );
+  expect(env.PATH.split(":").filter((part) => part === denoPrefix)).toHaveLength(
+    1,
+  );
+});
+
+test("listAvailableTestRepos uses the default checkout probe", () => {
+  const root = mkdtempSync(join(tmpdir(), "tp-run-repo-"));
+  tempRoots.push(root);
+  stubCheckoutRoot(root);
+  mkdirSync(join(root, "turbopaneld"));
+  writeFileSync(join(root, "turbopaneld", "deno.json"), "{}\n");
+  mkdirSync(join(root, "ui"));
+  writeFileSync(join(root, "ui", "package.json"), "{}\n");
+
+  const available = listAvailableTestRepos();
+  expect(available.map((repo) => repo.id).sort((a, b) => a.localeCompare(b)))
+    .toEqual(["turbopaneld", "ui"]);
+});
+
+test("the default turbopaneld probe accepts main.ts or ansible.cfg", () => {
+  const root = mkdtempSync(join(tmpdir(), "tp-run-repo-daemon-"));
+  tempRoots.push(root);
+  stubCheckoutRoot(root);
+
+  mkdirSync(join(root, "turbopaneld", "orchestration"), { recursive: true });
+  writeFileSync(
+    join(root, "turbopaneld", "orchestration", "ansible.cfg"),
+    "[defaults]\n",
+  );
+  expect(listAvailableTestRepos().map((repo) => repo.id)).toEqual([
+    "turbopaneld",
+  ]);
+
+  rmSync(join(root, "turbopaneld"), { recursive: true, force: true });
+  mkdirSync(join(root, "turbopaneld"));
+  writeFileSync(join(root, "turbopaneld", "main.ts"), "// daemon\n");
+  expect(listAvailableTestRepos().map((repo) => repo.id)).toEqual([
+    "turbopaneld",
+  ]);
+});
+
+test("buildTestCommand uses vendored node and pnpm when bins are omitted", () => {
+  const ui = buildTestCommand("ui", "test");
+  expect(ui.cmd).toEqual([NODE_BIN, PNPM_BIN, "test"]);
+  expect(ui.label).toBe("pnpm test");
+});
+
 test("runRepoTests streams banner lines and reports exit code", async () => {
   const lines: string[] = [];
   const result = await runRepoTests("ui", "test", (line) => lines.push(line), {
@@ -147,6 +232,16 @@ test("runRepoTests marks aborted exits", async () => {
   expect(result.aborted).toBe(true);
   expect(result.exitCode).toBe(RUN_CAPTURED_ABORTED_EXIT);
   expect(result.logPath).toBeNull();
+});
+
+test("runRepoTests falls back to catalog builders when deps omit them", async () => {
+  const result = await runRepoTests("ui", "lint", undefined, {
+    persistLog: false,
+    deps: {
+      run: async () => 0,
+    },
+  });
+  expect(result).toEqual({ exitCode: 0, aborted: false, logPath: null });
 });
 
 test("runRepoTests persists a transcript when openLog is provided", async () => {

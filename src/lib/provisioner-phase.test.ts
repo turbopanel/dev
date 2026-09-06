@@ -19,6 +19,19 @@ describe("provisionerPhaseForDaemonOperation", () => {
 
   it("maps install (and missing operation) to daemon bootstrap", () => {
     expect(provisionerPhaseForDaemonOperation("install")).toBe("daemon");
+    expect(provisionerPhaseForDaemonOperation("purge")).toBe("daemon");
+    expect(provisionerPhaseForDaemonOperation("restart")).toBe("daemon");
     expect(provisionerPhaseForDaemonOperation(null)).toBe("daemon");
+    expect(provisionerPhaseForDaemonOperation(undefined)).toBe("daemon");
+  });
+
+  it("maps a converge operation onto the dev-env provisioner phase", () => {
+    expect(provisionerPhaseForDaemonOperation("dev-env")).toBe("dev-env");
+  });
+
+  it("returns an unexpected operation from the exhaustive fallback", () => {
+    expect(
+      provisionerPhaseForDaemonOperation("not-a-phase" as never),
+    ).toBe("not-a-phase");
   });
 });
