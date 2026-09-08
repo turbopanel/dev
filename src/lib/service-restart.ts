@@ -22,6 +22,7 @@ const SYSTEMD_UNITS: Record<string, string> = {
   cache: "turbopanel-redis",
   redisinsight: "turbopanel-redis-insight",
   smtp: "turbopanel-mailpit",
+  stripe: "turbopanel-stripe-listen",
 };
 
 const DOCKER_CONTAINERS: Record<string, string> = {

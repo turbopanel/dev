@@ -15,6 +15,7 @@ const harness = vi.hoisted(() => {
     ui: true,
     website: true,
     redisinsight: false,
+    stripe: false,
   };
   return {
     services: [] as DevService[],

@@ -5,6 +5,7 @@ export type ProvisionerPhase =
   | "dev-env"
   | "reset-dev-env"
   | "reset-dev-db"
+  | "save-tier-catalogue"
   | "sync-dev-build"
   | "rebuild-daemon-upgrade";
 
@@ -24,6 +25,8 @@ export function provisionerPhaseForDaemonOperation(
       return "reset-dev-env";
     case "reset-dev-db":
       return "reset-dev-db";
+    case "save-tier-catalogue":
+      return "save-tier-catalogue";
     case "sync-dev-build":
       return "sync-dev-build";
     case "rebuild-daemon-upgrade":

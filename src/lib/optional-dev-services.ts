@@ -17,6 +17,7 @@ export const OPTIONAL_DEV_SERVICE_IDS = [
   "ui",
   "website",
   "redisinsight",
+  "stripe",
 ] as const;
 
 export type OptionalDevServiceId = (typeof OPTIONAL_DEV_SERVICE_IDS)[number];
@@ -40,6 +41,9 @@ export type OptionalDevServiceDef = {
 /** Optional services that only apply to the Deno self-hosted dev stack. */
 export const OPTIONAL_DENO_ONLY_SERVICE_IDS = [
   "redisinsight",
+  // The Workers instance reads its secrets from `.dev.vars`, not from the
+  // stripe.env file the instance unit loads, so the forwarder is Deno-only.
+  "stripe",
 ] as const satisfies readonly OptionalDevServiceId[];
 
 export const OPTIONAL_DEV_SERVICE_DEFS: readonly OptionalDevServiceDef[] = [
@@ -83,15 +87,27 @@ export const OPTIONAL_DEV_SERVICE_DEFS: readonly OptionalDevServiceDef[] = [
       REDIS_INSIGHT_BRIDGE_CONTAINER_NAME,
     ],
   },
+  {
+    id: "stripe",
+    label: "Stripe CLI (webhook forward)",
+    hint: "Forwards Stripe events to /webhook/stripe; needs a test key",
+    ansibleStem: "stripe_listen",
+    unit: "turbopanel-stripe-listen",
+  },
 ] as const;
 
-/** Defaults: UI, website, Mailpit, and Drizzle Studio on; Redis Insight off. */
+/**
+ * Defaults: UI, website, Mailpit, and Drizzle Studio on; Redis Insight off;
+ * Stripe CLI off (it is useless without a test-mode key in
+ * /etc/turbopanel/stripe-listen/stripe.env, which nothing generates).
+ */
 export const DEFAULT_OPTIONAL_DEV_SERVICES: OptionalDevServiceSelection = {
   dbstudio: true,
   smtp: true,
   ui: true,
   website: true,
   redisinsight: false,
+  stripe: false,
 };
 
 export const OPTIONAL_SERVICES_PREFS_PATH =

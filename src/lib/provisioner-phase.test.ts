@@ -12,6 +12,9 @@ describe("provisionerPhaseForDaemonOperation", () => {
     expect(provisionerPhaseForDaemonOperation("reset-dev-env")).toBe(
       "reset-dev-env",
     );
+    expect(provisionerPhaseForDaemonOperation("save-tier-catalogue")).toBe(
+      "save-tier-catalogue",
+    );
     expect(provisionerPhaseForDaemonOperation("reset-dev-db")).toBe(
       "reset-dev-db",
     );

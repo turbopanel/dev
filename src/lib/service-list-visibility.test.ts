@@ -26,6 +26,7 @@ test("workers runtime omits Deno-only optional catalog rows", () => {
     "ui",
     "website",
     "redisinsight",
+    "stripe",
   ]);
   expect(catalogOptionalServiceIdsForRuntime("workers")).toEqual([
     "dbstudio",
@@ -104,6 +105,7 @@ test("mergeCatalogOptionalServices injects missing catalog rows in order", () =>
     "website",
     "smtp",
     "redisinsight",
+    "stripe",
   ]);
   expect(merged.find((service) => service.id === "smtp")?.status).toBe(
     "uninstalled",
@@ -148,6 +150,7 @@ test("mergeCatalogOptionalServices returns the same list when nothing is missing
     { id: "ui", label: "ui", status: "running" as const },
     { id: "website", label: "website", status: "running" as const },
     { id: "redisinsight", label: "redisinsight", status: "running" as const },
+    { id: "stripe", label: "stripe", status: "running" as const },
   ];
   expect(mergeCatalogOptionalServices(services, "deno")).toBe(services);
 });

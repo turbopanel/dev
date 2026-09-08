@@ -23,6 +23,7 @@ export type DaemonActionId =
   | "optional-services"
   | "reset-dev-env"
   | "reset-dev-db"
+  | "save-tier-catalogue"
   | "toggle-cell-trace"
   | "view-cell-trace"
   | "run-tests"
@@ -43,6 +44,7 @@ export const DAEMON_ACTION_LABELS: Record<DaemonActionId, string> = {
   "optional-services": "Optional services…",
   "reset-dev-env": "Reset development environment",
   "reset-dev-db": "Reset dev database",
+  "save-tier-catalogue": "Save tier catalogue to dev/local/tiers.json",
   "toggle-cell-trace": "Toggle verbose cell trace",
   "view-cell-trace": "View cell trace log",
   "run-tests": "Run tests…",
@@ -91,12 +93,18 @@ export function developerMenuActions(status: DevServiceStatus | undefined): Daem
       ? ["sync-dev-build", "rebuild-daemon-upgrade"]
       : [];
 
+  // Tiers exist only where billing does (the Workers build). The saved copy is
+  // restored by the dev overlay role on converge; this is the write side.
+  const workersActions: DaemonActionId[] =
+    readInstanceRuntime() === "workers" ? ["save-tier-catalogue"] : [];
+
   return [
     "repair",
     "start-dev-env",
     "optional-services",
     "reset-dev-env",
     "reset-dev-db",
+    ...workersActions,
     "run-tests",
     "toggle-cell-trace",
     "view-cell-trace",

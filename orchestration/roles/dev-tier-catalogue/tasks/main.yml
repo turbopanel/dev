@@ -1,0 +1,69 @@
+---
+# Restore the dev tier catalogue: only when the checkout holds one and the
+# tier table is empty (fresh database). Never merges into a non-empty table —
+# a superadmin's live edits always win over the saved copy. The saved copy is
+# written by the dev console (Developer → Save tier catalogue).
+- name: Restore the dev tier catalogue
+  when:
+    - turbopanel_dev_user | length > 0
+    - (turbopanel_instance_runtime | default('deno')) == 'workers'
+  block:
+    - name: Stat the saved tier catalogue
+      ansible.builtin.stat:
+        path: "{{ dev_tier_catalogue_file }}"
+      register: _dev_tier_catalogue_stat
+
+    - name: Count tier rows in the dev database
+      when: _dev_tier_catalogue_stat.stat.exists
+      ansible.builtin.command:
+        argv:
+          - docker
+          - exec
+          - "{{ postgres_container_name }}"
+          - psql
+          - -U
+          - "{{ postgres_user }}"
+          - -d
+          - "{{ postgres_db }}"
+          - -Atc
+          - select count(*) from tier
+      register: _dev_tier_count
+      changed_when: false
+      # A database that has not been migrated yet has no tier table: skip.
+      failed_when: false
+
+    - name: Read the saved tier catalogue
+      when:
+        - _dev_tier_catalogue_stat.stat.exists
+        - _dev_tier_count.rc | default(1) == 0
+        - (_dev_tier_count.stdout | default('') | trim) == '0'
+      ansible.builtin.slurp:
+        src: "{{ dev_tier_catalogue_file }}"
+      register: _dev_tier_catalogue_raw
+
+    - name: Restore tier rows from the saved catalogue
+      when:
+        - _dev_tier_catalogue_raw.content is defined
+        - (_dev_tier_catalogue_raw.content | b64decode | from_json) is sequence
+        - (_dev_tier_catalogue_raw.content | b64decode | from_json) | length > 0
+      ansible.builtin.command:
+        argv:
+          - docker
+          - exec
+          - -i
+          - "{{ postgres_container_name }}"
+          - psql
+          - -U
+          - "{{ postgres_user }}"
+          - -d
+          - "{{ postgres_db }}"
+          - -v
+          - ON_ERROR_STOP=1
+          - -f
+          - "-"
+        # Dollar quoting: the JSON never contains the tag, so nothing needs escaping.
+        stdin: >-
+          insert into tier
+          select * from json_populate_recordset(null::tier,
+          $devtiers${{ _dev_tier_catalogue_raw.content | b64decode | trim }}$devtiers$::json);
+      changed_when: true

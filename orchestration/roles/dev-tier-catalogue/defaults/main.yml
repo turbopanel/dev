@@ -1,0 +1,10 @@
+---
+# Shared dev-identity contract (mirrors the daemon roles).
+turbopanel_dev_user: ""
+turbopanel_instance_runtime: deno
+# Same values the daemon's postgres / system-compose roles use for the dev stack.
+postgres_container_name: turbopanel-database
+postgres_user: turbopanel
+postgres_db: turbopanel
+# The durable copy, in the mounted dev checkout (gitignored; see local/README.md).
+dev_tier_catalogue_file: "{{ turbopanel_dev_root }}/dev/local/tiers.json"

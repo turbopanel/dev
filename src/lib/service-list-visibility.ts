@@ -20,6 +20,7 @@ const SERVICE_LIST_ORDER = [
   "cache",
   "redisinsight",
   "queue",
+  "stripe",
 ] as const;
 
 export function isCatalogOptionalServiceId(

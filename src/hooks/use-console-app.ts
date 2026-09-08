@@ -254,6 +254,9 @@ export function useConsoleApp() {
       case "reset-dev-db":
         beginBootstrapOperation("reset-dev-db");
         return;
+      case "save-tier-catalogue":
+        beginBootstrapOperation("save-tier-catalogue");
+        return;
       case "sync-dev-build":
         beginBootstrapOperation("sync-dev-build");
         return;

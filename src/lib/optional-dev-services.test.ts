@@ -79,13 +79,14 @@ function tempPrefsPath(): string {
   return join(dir, "optional-services.json");
 }
 
-test("defaults enable ui, website, mailpit, and drizzle studio", () => {
+test("defaults enable ui, website, mailpit, and drizzle studio; redis insight and stripe off", () => {
   expect(DEFAULT_OPTIONAL_DEV_SERVICES).toEqual({
     dbstudio: true,
     smtp: true,
     ui: true,
     website: true,
     redisinsight: false,
+    stripe: false,
   });
 });
 
@@ -96,6 +97,7 @@ test("normalizeOptionalSelection fills missing keys from defaults", () => {
     ui: false,
     website: true,
     redisinsight: true,
+    stripe: false,
   });
 });
 
@@ -134,6 +136,7 @@ test("optionalServicesOrchestrationEnv emits TURBOPANEL_OPTIONAL_* flags", () =>
     ui: false,
     website: true,
     redisinsight: true,
+    stripe: true,
   });
   expect(env).toEqual([
     "TURBOPANEL_OPTIONAL_DBSTUDIO=true",
@@ -141,12 +144,14 @@ test("optionalServicesOrchestrationEnv emits TURBOPANEL_OPTIONAL_* flags", () =>
     "TURBOPANEL_OPTIONAL_UI=false",
     "TURBOPANEL_OPTIONAL_WEBSITE=true",
     "TURBOPANEL_OPTIONAL_REDIS_INSIGHT=true",
+    "TURBOPANEL_OPTIONAL_STRIPE_LISTEN=true",
   ]);
 });
 
 test("assertOptionalDevServiceId rejects unknown ids", () => {
   expect(assertOptionalDevServiceId("ui")).toBe("ui");
   expect(assertOptionalDevServiceId("smtp")).toBe("smtp");
+  expect(assertOptionalDevServiceId("stripe")).toBe("stripe");
   expect(() => assertOptionalDevServiceId("daemon")).toThrow(TypeError);
 });
 
@@ -315,6 +320,7 @@ test("applyOptionalDevServices throws when systemctl enable fails", async () => 
       ui: true,
       website: true,
       redisinsight: true,
+      stripe: true,
     }),
   ).rejects.toThrow("systemctl enable --now turbopanel-dbstudio failed");
 });
@@ -491,6 +497,7 @@ test("applyOptionalDevServices disables a unit-only service without docker", asy
       ui: false,
       website: true,
       redisinsight: true,
+      stripe: false,
     },
     (line) => lines.push(line),
   );
@@ -511,6 +518,37 @@ test("applyOptionalDevServices disables a unit-only service without docker", asy
   expect(lines.some((line) => line.includes("Disabling optional service"))).toBe(
     true,
   );
+});
+
+test("stripe is a unit-only optional service with the stripe_listen ansible stem", () => {
+  const stripe = OPTIONAL_DEV_SERVICE_DEFS.find((def) => def.id === "stripe");
+  if (!stripe) {
+    throw new TypeError("expected stripe optional service def");
+  }
+  expect(stripe.unit).toBe("turbopanel-stripe-listen");
+  expect(stripe.ansibleStem).toBe("stripe_listen");
+  expect(optionalDevServiceBackingContainers(stripe)).toEqual([]);
+  expect(optionalDevServiceCatalogIdsForRuntime("deno")).toContain("stripe");
+  expect(optionalDevServiceCatalogIdsForRuntime("workers")).not.toContain("stripe");
+});
+
+test("applyOptionalDevServices reports a missing stripe unit when wanted", async () => {
+  mockedSpawnSyncTrustedText.mockReturnValue({
+    status: 0,
+    stdout: "not-found",
+    stderr: "",
+    pid: 0,
+    output: ["", "not-found", ""],
+    signal: null,
+  });
+  const lines: string[] = [];
+  await applyOptionalDevServices(
+    { ...defaultOptionalSelection(), stripe: true },
+    (line) => lines.push(line),
+  );
+  expect(
+    lines.some((line) => line.includes("Stripe CLI (webhook forward) is not installed yet")),
+  ).toBe(true);
 });
 
 test("applyOptionalDevServices starts container-only services when unit is missing", async () => {

@@ -15,7 +15,11 @@
 #       <home>/turbopaneld, <home>/turbopanel, <home>/ui, <home>/website
 #   * every mutable dir is the shared FHS location (dev-user-owned at runtime):
 #       /etc/turbopanel, /var/lib/turbopanel, /var/log/turbopanel,
-#       /opt/turbopanel/vendor, /run/turbopanel
+#       /opt/turbopanel/vendor, /run/turbopanel, /backup
+#     (/backup is the managed-engine backup root — LayoutPaths.backupDir,
+#      TURBOPANEL_BACKUP_DIR. It is created dev-user-owned by the shared
+#      turbopanel-user role below, exactly like /var/log/turbopanel, so the
+#      dev guest needs no task of its own here.)
 # There is no /opt/turbopanel/platform tree and no ACL / multi-user / setgid
 # reconciliation — the single dev user owns its home checkouts and the FHS trees.
 #
@@ -65,12 +69,15 @@
     # Optional tooling — console picker / TURBOPANEL_OPTIONAL_* env. Core stack
     # (instance, caddy, system-stack, redis, mailer) always starts.
     # Defaults: Expo UI + website + Mailpit + Drizzle Studio on; Redis Insight
-    # off (it stays listed in the TUI, gray until enabled).
+    # and the Stripe CLI forwarder off (they stay listed in the TUI, gray until
+    # enabled). Stripe listen also needs a test-mode key in
+    # /etc/turbopanel/stripe-listen/stripe.env, supplied by hand.
     turbopanel_optional_dbstudio: true
     turbopanel_optional_ui: true
     turbopanel_optional_website: true
     turbopanel_optional_mailpit: true
     turbopanel_optional_redis_insight: false
+    turbopanel_optional_stripe_listen: false
 
   pre_tasks:
     - name: Refresh apt cache once per converge (Debian)
@@ -118,6 +125,10 @@
     # Compose content stays daemon-owned (managed.ha.reconcile).
     - role: orchestrator
     - role: mailpit
+    # Stripe CLI `listen` forwarder (webhook events → /webhook/stripe). Its
+    # env file is loaded by the instance unit, so it runs before instance-launch.
+    - role: stripe-listen
+      when: turbopanel_instance_runtime == 'deno'
     - role: instance-user
     # GTK/NSS/GBM stack for @react-native/debugger-shell (Debian only).
     - role: instance-dev-prereqs
@@ -139,6 +150,8 @@
     # devInstanceExtraArgs) to seed cert SANs before the instance .env exists.
     - role: instance-certs
     - role: instance-launch
+    # Dev-only: put the hand-entered tier catalogue back after a reset/rebuild.
+    - role: dev-tier-catalogue
 
   post_tasks:
     # If converge aborts after instance-user stops the stack (uid migration) or
@@ -164,6 +177,8 @@
             enabled: "{{ turbopanel_optional_mailpit | default(true) | bool }}"
           - unit: turbopanel-redis-insight
             enabled: "{{ (turbopanel_instance_runtime == 'deno') and (turbopanel_optional_redis_insight | default(false) | bool) }}"
+          - unit: turbopanel-stripe-listen
+            enabled: "{{ (turbopanel_instance_runtime == 'deno') and (turbopanel_optional_stripe_listen | default(false) | bool) }}"
 
     - name: Resolve optional units to start
       ansible.builtin.set_fact:

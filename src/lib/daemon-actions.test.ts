@@ -154,8 +154,15 @@ describe("daemon menus", () => {
     expect(actions).not.toContain("open-duckdb-ui");
     expect(actions).not.toContain("sync-dev-build");
     expect(actions).not.toContain("rebuild-daemon-upgrade");
+    expect(actions).toContain("save-tier-catalogue");
     expect(actions.at(-1)).toBe("purge");
     expect(actions[0]).toBe("repair");
+  });
+
+  it("offers the tier catalogue save only where billing exists (Workers)", () => {
+    mockedReadInstanceRuntime.mockReturnValue("deno");
+    expect(developerMenuActions("running")).not.toContain("save-tier-catalogue");
+    expect(DAEMON_ACTION_LABELS["save-tier-catalogue"]).toContain("tiers.json");
   });
 
   it("hides open-duckdb-ui without the developer-surface build even on Deno", () => {

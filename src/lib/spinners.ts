@@ -9,6 +9,7 @@ export type DaemonOperation =
   | "dev-env"
   | "reset-dev-env"
   | "reset-dev-db"
+  | "save-tier-catalogue"
   | "sync-dev-build"
   | "rebuild-daemon-upgrade";
 

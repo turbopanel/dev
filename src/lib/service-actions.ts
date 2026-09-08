@@ -31,6 +31,7 @@ const SYSTEMD_UNITS: Record<string, string> = {
   cache: "turbopanel-redis",
   redisinsight: "turbopanel-redis-insight",
   smtp: "turbopanel-mailpit",
+  stripe: "turbopanel-stripe-listen",
 };
 
 const DOCKER_CONTAINERS: Record<string, string> = {
@@ -66,6 +67,7 @@ const MANAGED_SERVICE_IDS = new Set([
   "redisinsight",
   "queue",
   "smtp",
+  "stripe",
 ]);
 
 function systemctlProperty(unit: string, property: string): string | null {

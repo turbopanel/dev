@@ -267,6 +267,7 @@ const OPTIONAL_SELECTION = {
   ui: true,
   website: true,
   redisinsight: false,
+  stripe: false,
 };
 
 describe("useDevEnvConverge", () => {

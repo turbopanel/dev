@@ -43,6 +43,7 @@ import {
 } from "../lib/instance-install.ts";
 import { resetDevEnvironment } from "../lib/reset-dev-environment.ts";
 import { resetDevDatabase } from "../lib/reset-dev-database.ts";
+import { saveDevTierCatalogue } from "../lib/save-dev-tier-catalogue.ts";
 
 const OUTPUT_LOG_ROWS = 6;
 const SYNC_OUTPUT_LOG_ROWS = 200;
@@ -58,6 +59,7 @@ type ProvisionerPhase =
   | "dev-env"
   | "reset-dev-env"
   | "reset-dev-db"
+  | "save-tier-catalogue"
   | "sync-dev-build"
   | "rebuild-daemon-upgrade";
 
@@ -79,6 +81,8 @@ function provisionerTitle(phase: ProvisionerPhase): string {
       return "Resetting development environment…";
     case "reset-dev-db":
       return "Resetting dev database…";
+    case "save-tier-catalogue":
+      return "Saving tier catalogue…";
     case "daemon":
       return "Bootstrapping development environment";
   }
@@ -96,6 +100,8 @@ function provisionerSuccessMessage(phase: ProvisionerPhase): string {
       return "Development environment reset complete";
     case "reset-dev-db":
       return "Dev database reset complete";
+    case "save-tier-catalogue":
+      return "Tier catalogue saved to dev/local/tiers.json";
     case "daemon":
       return "Development environment ready";
   }
@@ -407,6 +413,37 @@ function useProvisionerPhaseEffects(opts: {
     setErrorLogPath,
     trackDevEnvStep,
   ]);
+
+  useEffect(() => {
+    if (phase !== "save-tier-catalogue") return;
+
+    let cancelled = false;
+
+    void (async () => {
+      const stepLabel = "Save tier catalogue";
+      try {
+        emitStep(stepLabel, "running");
+        await saveDevTierCatalogue(appendOutput);
+        if (cancelled) return;
+        emitStep(stepLabel, "ok");
+        setDone(true);
+      } catch (error_) {
+        if (cancelled) return;
+        await reportProvisionerFailure({
+          title: "Save tier catalogue",
+          stepLabel,
+          error_,
+          emitStep,
+          setError,
+          setErrorLogPath,
+        });
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [appendOutput, emitStep, phase, setDone, setError, setErrorLogPath]);
 
   useEffect(() => {
     if (phase !== "reset-dev-db") return;

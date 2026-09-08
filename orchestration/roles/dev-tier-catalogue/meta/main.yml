@@ -1,0 +1,18 @@
+---
+galaxy_info:
+  author: turbopanel
+  description: >-
+    Co-located dev only: restore the hand-entered billing tier catalogue from
+    the dev checkout's gitignored local/tiers.json after a database reset or a
+    VM rebuild. The rows were entered and verified against Stripe through
+    Admin → Tiers once; this replays exactly those rows and never invents any.
+    No-op on managed servers (turbopanel_dev_user unset) and on the Deno
+    runtime (self-hosted has no billing).
+  license: AGPL-3.0
+  min_ansible_version: "2.14"
+  platforms:
+    - name: Debian
+      versions:
+        - all
+
+dependencies: []

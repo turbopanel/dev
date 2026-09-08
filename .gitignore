@@ -49,3 +49,9 @@ coverage/
 
 # Local Claude Code settings (background-session isolation)
 .claude/settings.json
+
+# Machine-local dev secrets and saved catalogue (survive a VM rebuild because
+# the checkout is mounted into the guest). Only the README and examples are tracked.
+/local/*
+!/local/README.md
+!/local/*.example

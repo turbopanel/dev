@@ -73,6 +73,11 @@ const ANCILLARY_DENO_DEFS = [
   { id: "redisinsight", label: "redisinsight", kind: "redisinsight" as const },
   // queue lives in turbopanel-system Compose (not a per-service unit).
   { id: "queue", label: "queue", kind: "queue" as const },
+  // Stripe CLI webhook forwarder — a plain unit, off unless a test key is set.
+  // Only useful with a Workers (wrangler dev) instance: billing exists only in
+  // the Workers build, so a Deno instance has no /webhook/stripe to forward to.
+  // Neither runtime's unit reads stripe.env; copy its values into .dev.vars.
+  { id: "stripe", label: "stripe", unit: "turbopanel-stripe-listen" },
 ] as const;
 
 const ANCILLARY_WORKERS_DEFS = [

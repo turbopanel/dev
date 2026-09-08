@@ -175,6 +175,7 @@ test("optionalServices are forwarded to runOrchestrationAction", async () => {
     ui: true,
     website: false,
     redisinsight: true,
+    stripe: false,
   };
 
   await installDevEnvironment(
@@ -405,6 +406,7 @@ describe("runOrchestrationAction", () => {
       ui: false,
       website: false,
       redisinsight: true,
+      stripe: true,
     };
     await runOrchestrationAction(["ping"], () => {}, undefined, {
       denoBin: "/d",
@@ -417,6 +419,7 @@ describe("runOrchestrationAction", () => {
     }
     expect(envArgs).toContain("TURBOPANEL_OPTIONAL_DBSTUDIO=true");
     expect(envArgs).toContain("TURBOPANEL_OPTIONAL_REDIS_INSIGHT=true");
+    expect(envArgs).toContain("TURBOPANEL_OPTIONAL_STRIPE_LISTEN=true");
     expect(envArgs).toContain("TURBOPANEL_OPTIONAL_UI=false");
   });
 
