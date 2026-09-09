@@ -515,6 +515,25 @@ describe("useConsoleApp", () => {
     expect(mounted?.get().selectedService?.id).toBe("daemon");
   });
 
+  it("selects the first row of the first scan, not whatever mounted empty", async () => {
+    // The status scan is async, so the first render sees an empty list. The
+    // cursor must land on row 0 of the real list (instance), not fall back to
+    // the daemon.
+    harness.services = [];
+    await mountApp();
+    expect(mounted?.get().selectedService).toBeNull();
+
+    harness.services = [svc("instance"), svc("daemon"), svc("ui")];
+    await settle();
+    expect(mounted?.get().selectedServiceIndex).toBe(0);
+    expect(mounted?.get().selectedService?.id).toBe("instance");
+
+    // And that choice is then preserved across a reordering refresh.
+    harness.services = [svc("instance"), svc("daemon"), svc("caddy"), svc("ui")];
+    await settle();
+    expect(mounted?.get().selectedService?.id).toBe("instance");
+  });
+
   it("clamps the selected service when the row disappears", async () => {
     const app = await mountApp();
     app.setSelectedServiceIndex(1);

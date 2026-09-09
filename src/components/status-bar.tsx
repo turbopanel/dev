@@ -1,6 +1,5 @@
 import React, { memo } from "react";
 import { Box, Text } from "ink";
-import { readInstanceRuntime } from "../lib/daemon-env.ts";
 import { testRepoForServiceId } from "../lib/run-repo-tests.ts";
 import { isManagedService } from "../lib/service-actions.ts";
 import { serviceSupportsOpen } from "../lib/service-urls.ts";
@@ -9,24 +8,23 @@ import { BORDER_COLOR } from "../theme.ts";
 import type { PendingRestart, PendingOptionalServices, DeveloperView } from "../hooks/use-console-app.ts";
 import type { DaemonActionId } from "../lib/daemon-actions.ts";
 
-function serviceActionHints(selectedServiceId?: string | null): string {
+function serviceActionHints(
+  selectedServiceId: string | null | undefined,
+  instanceRuntime: "deno" | "workers",
+): string {
   if (!selectedServiceId || !isManagedService(selectedServiceId)) {
     return "";
   }
 
   const parts = ["R restart", "X disable", "E enable"];
-  if (selectedServiceId === "daemon" && readInstanceRuntime() === "deno") {
+  if (selectedServiceId === "daemon" && instanceRuntime === "deno") {
     parts.push("U rebuild remotes");
   }
   if (serviceSupportsOpen(selectedServiceId)) {
     parts.push("O open");
   }
   if (selectedServiceId === "instance") {
-    if (readInstanceRuntime() === "deno") {
-      parts.push("W worker");
-    } else {
-      parts.push("D deno");
-    }
+    parts.push(instanceRuntime === "deno" ? "W worker" : "D deno");
   }
   return ` · ${parts.join(" · ")}`;
 }
@@ -59,6 +57,11 @@ export type StatusHintsContext = {
   pendingDestructiveAction?: DaemonActionId | null;
   /** When set, Services is showing the per-service Run tests overlay. */
   serviceTestsRepoId?: string | null;
+  /**
+   * Instance runtime, passed in rather than read here — `statusHints` runs on
+   * every repaint and `daemon.env` reads can cost a `sudo` subprocess.
+   */
+  instanceRuntime?: "deno" | "workers";
 };
 
 function optionalServicesHints(mode: PendingOptionalServices["mode"]): string {
@@ -81,7 +84,10 @@ function servicesAreaHints(ctx: StatusHintsContext): string {
   if (ctx.serviceTestsRepoId) {
     return "↑ ↓ choose · Enter · Esc back/cancel · Ctrl-C exit";
   }
-  const actionHints = serviceActionHints(ctx.selectedServiceId);
+  const actionHints = serviceActionHints(
+    ctx.selectedServiceId,
+    ctx.instanceRuntime ?? "deno",
+  );
   return `${servicesNavHints(ctx.selectedServiceId)}${actionHints} · Ctrl-C exit`;
 }
 

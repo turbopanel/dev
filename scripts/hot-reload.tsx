@@ -5,6 +5,7 @@ import { createServer, normalizePath, type ViteDevServer } from "vite";
 import type { AppView as AppViewComponent, AREAS as AppAreas } from "../src/app.tsx";
 import { BootScreen } from "../src/components/boot-screen.tsx";
 import { useConsoleApp } from "../src/hooks/use-console-app.ts";
+import { useInstanceRuntime } from "../src/hooks/use-instance-runtime.ts";
 import { openConsoleStdin } from "../src/lib/console-stdin.ts";
 
 type AppModule = {
@@ -31,6 +32,7 @@ function HotReloadApp({
   const { columns, rows } = useWindowSize();
   const [appModule, setAppModule] = useState(initialModule);
   const consoleApp = useConsoleApp();
+  const instanceRuntime = useInstanceRuntime();
 
   useEffect(() => {
     let timeout: NodeJS.Timeout | undefined;
@@ -81,6 +83,8 @@ function HotReloadApp({
       selectedServiceIndex={consoleApp.selectedServiceIndex}
       selectedServiceId={consoleApp.selectedService?.id ?? null}
       visibleServices={consoleApp.visibleServices}
+      servicesLoading={consoleApp.servicesLoading}
+      instanceRuntime={instanceRuntime}
       daemonOperation={consoleApp.daemonOperation}
       onProvisioningDone={consoleApp.handleProvisioningDone}
       onInstallFinished={consoleApp.handleInstallFinished}

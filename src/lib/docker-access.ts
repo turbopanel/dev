@@ -1,4 +1,5 @@
 import { spawnSync, type SpawnSyncReturns } from "node:child_process";
+import { spawnTrustedText, type TrustedTextResult } from "./spawn-trusted.ts";
 
 type SpawnResult = SpawnSyncReturns<string>;
 
@@ -29,4 +30,21 @@ export function dockerOutputLines(result: SpawnResult): string[] {
   return combined
     .split("\n")
     .filter((line) => line.trim().length > 0);
+}
+
+/** Async sibling of {@link spawnDocker} — same dev-user-then-sudo fallback. */
+export async function spawnDockerAsync(
+  args: readonly string[],
+): Promise<TrustedTextResult | null> {
+  const attempts: string[][] = [
+    ["docker", ...args],
+    ["sudo", "-n", "docker", ...args],
+  ];
+  for (const [command, ...rest] of attempts) {
+    const result = await spawnTrustedText(command!, rest);
+    if (result.status === 0) {
+      return result;
+    }
+  }
+  return null;
 }

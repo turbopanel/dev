@@ -3,10 +3,13 @@ import { Box, Text, useApp, useInput } from "ink";
 import { ScrollList } from "ink-scroll-list";
 import type { DevService } from "../dev-services.ts";
 import {
+  ServiceListSkeleton,
+  SKELETON_SERVICES,
+} from "./service-list-skeleton.tsx";
+import {
   daemonMenuActions,
   type DaemonActionId,
 } from "../lib/daemon-actions.ts";
-import { readInstanceRuntime } from "../lib/daemon-env.ts";
 import type { PendingRestart, PendingOptionalServices, ServiceOperation } from "../hooks/use-console-app.ts";
 import type {
   ConvergeServicePhase,
@@ -226,6 +229,7 @@ function handleServicesListInput(options: {
   listIndex: number;
   visibleFullIndices: number[];
   settledService: DevService | null;
+  runtime: "deno" | "workers";
   onServiceAction?: (serviceId: string, action: ServiceActionId) => void | Promise<void>;
   setListIndex: (index: number) => void;
 }): void {
@@ -235,6 +239,7 @@ function handleServicesListInput(options: {
     listIndex,
     visibleFullIndices,
     settledService,
+    runtime,
     onServiceAction,
     setListIndex,
   } = options;
@@ -254,7 +259,6 @@ function handleServicesListInput(options: {
   if (!settledService || !onServiceAction) {
     return;
   }
-  const runtime = readInstanceRuntime();
   const action = serviceActionForKey(settledService.id, input, runtime);
   if (
     action &&
@@ -268,6 +272,8 @@ export function ServicesPanel({
   width,
   height,
   services,
+  servicesLoading = false,
+  instanceRuntime = "deno",
   selectedIndex,
   onDaemonAction,
   onSelectedIndexChange,
@@ -292,6 +298,9 @@ export function ServicesPanel({
   width: number;
   height: number;
   services: DevService[];
+  /** True until the first status scan lands — the list shows a skeleton. */
+  servicesLoading?: boolean;
+  instanceRuntime?: "deno" | "workers";
   selectedIndex: number;
   daemonOperation?: DaemonOperation | null;
   serviceOperation?: ServiceOperation | null;
@@ -314,7 +323,14 @@ export function ServicesPanel({
   onDismissDevEnvConvergeError?: () => void;
 }>) {
   const { suspendTerminal } = useApp();
-  const { leftWidth, detailWidth } = resolvePaneWidths(width, services);
+  // Only before the very first scan lands — a later poll must not blank the list.
+  const showSkeleton = servicesLoading && services.length === 0;
+  // Size the panes off stand-in rows while loading, so the split does not jump
+  // sideways the moment real service names arrive.
+  const { leftWidth, detailWidth } = resolvePaneWidths(
+    width,
+    showSkeleton ? SKELETON_SERVICES : services,
+  );
   const servicePhases = devEnvConverge?.servicePhases ?? {};
   const convergeSummaryVisible = Boolean(
     devEnvConverge &&
@@ -473,6 +489,7 @@ export function ServicesPanel({
       listIndex,
       visibleFullIndices,
       settledService,
+      runtime: instanceRuntime,
       onServiceAction,
       setListIndex,
     });
@@ -491,6 +508,12 @@ export function ServicesPanel({
         borderBottom={false}
         borderLeft={false}
       >
+        {showSkeleton ? (
+          <ServiceListSkeleton
+            width={Math.max(1, leftWidth - SERVICE_LIST_BORDER_COLUMNS)}
+            height={height}
+          />
+        ) : (
         <ScrollList height={height} selectedIndex={displaySelectedIndex}>
           {displayServices.map((service, index) => {
             const focused = index === displaySelectedIndex;
@@ -528,6 +551,7 @@ export function ServicesPanel({
             );
           })}
         </ScrollList>
+        )}
       </Box>
       {detailWidth > 0 && (
         <Box flexDirection="column" width={detailWidth} height={height}>

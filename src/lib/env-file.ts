@@ -4,10 +4,15 @@ import {
   unlinkSync,
   writeFileSync,
 } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { resolveDevIdentity } from "./dev-identity.ts";
-import { spawnSyncTrusted, spawnSyncTrustedText } from "./spawn-trusted.ts";
+import {
+  spawnSyncTrusted,
+  spawnSyncTrustedText,
+  spawnTrustedText,
+} from "./spawn-trusted.ts";
 
 export function readEnvFile(path: string): string {
   try {
@@ -17,6 +22,16 @@ export function readEnvFile(path: string): string {
       stdio: ["ignore", "pipe", "ignore"],
     });
     return result.status === 0 ? (result.stdout ?? "") : "";
+  }
+}
+
+/** Async sibling of {@link readEnvFile} — never blocks the Ink event loop. */
+export async function readEnvFileAsync(path: string): Promise<string> {
+  try {
+    return await readFile(path, "utf8");
+  } catch {
+    const result = await spawnTrustedText("sudo", ["-n", "cat", path]);
+    return result.status === 0 ? result.stdout : "";
   }
 }
 

@@ -12,6 +12,7 @@ import {
   mergeEnvFile,
   parseEnvEntries,
   readEnvFile,
+  readEnvFileAsync,
 } from "./env-file.ts";
 import { caddyBrowserUrl } from "./service-urls.ts";
 
@@ -100,6 +101,41 @@ function readDaemonEnvEntries(): Map<string, string> {
   return parseEnvEntries(readEnvFile(DAEMON_ENV_PATH));
 }
 
+/**
+ * Every `daemon.env`-derived flag a status scan needs, from **one** file read.
+ *
+ * `readInstanceRuntime()` and friends each re-read and re-parse the file, and
+ * when it is not readable by the dev user each of those falls back to a
+ * `sudo -n cat` subprocess. Callers that need more than one flag (or that run
+ * per repaint) must take a snapshot instead of calling them individually.
+ */
+export type DaemonEnvSnapshot = {
+  runtime: "deno" | "workers";
+  uiMode: "dev" | "static";
+  runMode: "source" | "compiled";
+  devInstanceEnabled: boolean;
+};
+
+function snapshotFromEntries(entries: Map<string, string>): DaemonEnvSnapshot {
+  return {
+    runtime: entries.get(RUNTIME_KEY) === "workers" ? "workers" : "deno",
+    uiMode: entries.get("TURBOPANEL_UI_MODE") === "static" ? "static" : "dev",
+    runMode: entries.get("TURBOPANEL_INSTANCE_RUN_MODE") === "compiled"
+      ? "compiled"
+      : "source",
+    devInstanceEnabled: entries.get(INSTANCE_OPT_IN_KEY) === "1",
+  };
+}
+
+export function readDaemonEnvSnapshot(): DaemonEnvSnapshot {
+  return snapshotFromEntries(readDaemonEnvEntries());
+}
+
+/** Async sibling of {@link readDaemonEnvSnapshot} — never blocks the event loop. */
+export async function readDaemonEnvSnapshotAsync(): Promise<DaemonEnvSnapshot> {
+  return snapshotFromEntries(parseEnvEntries(await readEnvFileAsync(DAEMON_ENV_PATH)));
+}
+
 export function readInstanceRuntime(): "deno" | "workers" {
   const runtime = readDaemonEnvEntries().get("TURBOPANEL_INSTANCE_RUNTIME");
   return runtime === "workers" ? "workers" : "deno";
@@ -126,10 +162,12 @@ export function readInstanceRunMode(): "source" | "compiled" {
  * (`deno task compile` targets `src/deno.ts`), and static-UI builds execute
  * the non-developer entry, so developer-surface actions must stay hidden.
  */
-export function isDeveloperSurfaceInstance(): boolean {
-  return readInstanceRuntime() === "deno" &&
-    readInstanceRunMode() === "source" &&
-    readInstanceUiMode() === "dev";
+export function isDeveloperSurfaceInstance(
+  snapshot: DaemonEnvSnapshot = readDaemonEnvSnapshot(),
+): boolean {
+  return snapshot.runtime === "deno" &&
+    snapshot.runMode === "source" &&
+    snapshot.uiMode === "dev";
 }
 
 export function isDevInstanceEnabled(): boolean {

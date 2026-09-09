@@ -1,26 +1,12 @@
-import { useEffect, useState } from "react";
-import { readInstanceRuntime } from "../lib/daemon-env.ts";
+import { useDaemonEnv } from "./use-daemon-env.ts";
 
-export function resolveInstanceRuntimeRefresh(
-  current: "deno" | "workers",
-  next: "deno" | "workers",
-): "deno" | "workers" {
-  return current === next ? current : next;
-}
-
+/**
+ * The instance runtime, polled off the render path.
+ *
+ * Delegates to {@link useDaemonEnv} so every consumer shares one poller and one
+ * warm cache — reading `daemon.env` synchronously per render stalled Ink, and
+ * a second independent cache made the Developer menu flicker on first paint.
+ */
 export function useInstanceRuntime(): "deno" | "workers" {
-  const [runtime, setRuntime] = useState(readInstanceRuntime);
-
-  useEffect(() => {
-    const refresh = () => {
-      const next = readInstanceRuntime();
-      setRuntime((current) => resolveInstanceRuntimeRefresh(current, next));
-    };
-
-    refresh();
-    const id = setInterval(refresh, 2000);
-    return () => clearInterval(id);
-  }, []);
-
-  return runtime;
+  return useDaemonEnv().runtime;
 }

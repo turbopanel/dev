@@ -1,34 +1,28 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mountHook, type MountedHook } from "./ink-hook-render.ts";
-import {
-  resolveInstanceRuntimeRefresh,
-  useInstanceRuntime,
-} from "./use-instance-runtime.ts";
+import { useInstanceRuntime } from "./use-instance-runtime.ts";
 
-vi.mock("../lib/daemon-env.ts", () => ({
-  readInstanceRuntime: vi.fn(),
+vi.mock("./use-daemon-env.ts", () => ({
+  useDaemonEnv: vi.fn(),
 }));
 
-import { readInstanceRuntime } from "../lib/daemon-env.ts";
+import { useDaemonEnv } from "./use-daemon-env.ts";
 
-describe("resolveInstanceRuntimeRefresh", () => {
-  it("returns the current runtime when unchanged", () => {
-    const current = "deno" as const;
-    expect(resolveInstanceRuntimeRefresh(current, "deno")).toBe(current);
-  });
-
-  it("returns the next runtime when it changed", () => {
-    expect(resolveInstanceRuntimeRefresh("deno", "workers")).toBe("workers");
-    expect(resolveInstanceRuntimeRefresh("workers", "deno")).toBe("deno");
-  });
-});
+function envSnapshot(runtime: "deno" | "workers") {
+  return {
+    runtime,
+    uiMode: "dev" as const,
+    runMode: "source" as const,
+    devInstanceEnabled: true,
+  };
+}
 
 describe("useInstanceRuntime", () => {
   let mounted: MountedHook<"deno" | "workers"> | undefined;
 
   beforeEach(() => {
-    vi.mocked(readInstanceRuntime).mockReset();
-    vi.mocked(readInstanceRuntime).mockReturnValue("deno");
+    vi.mocked(useDaemonEnv).mockReset();
+    vi.mocked(useDaemonEnv).mockReturnValue(envSnapshot("deno"));
   });
 
   afterEach(() => {
@@ -37,19 +31,13 @@ describe("useInstanceRuntime", () => {
     vi.useRealTimers();
   });
 
-  it("polls every two seconds and keeps the current value when unchanged", async () => {
-    vi.useFakeTimers({ toFake: ["setInterval"] });
+  it("reports the runtime from the shared daemon.env poller", async () => {
     mounted = mountHook(() => useInstanceRuntime());
     await mounted.flush();
     expect(mounted.get()).toBe("deno");
 
-    const held = mounted.get();
-    await vi.advanceTimersByTimeAsync(2000);
-    await mounted.flush();
-    expect(mounted.get()).toBe(held);
-
-    vi.mocked(readInstanceRuntime).mockReturnValue("workers");
-    await vi.advanceTimersByTimeAsync(2000);
+    vi.mocked(useDaemonEnv).mockReturnValue(envSnapshot("workers"));
+    mounted.rerender();
     await mounted.flush();
     expect(mounted.get()).toBe("workers");
   });

@@ -4,10 +4,10 @@ import { mountHook, type MountedHook } from "./ink-hook-render.ts";
 import { servicesEqual, useVisibleServices } from "./use-visible-services.ts";
 
 vi.mock("../dev-services.ts", () => ({
-  getVisibleServices: vi.fn(),
+  readVisibleServices: vi.fn(),
 }));
 
-import { getVisibleServices } from "../dev-services.ts";
+import { readVisibleServices } from "../dev-services.ts";
 
 function service(
   partial: Partial<DevService> & Pick<DevService, "id">,
@@ -56,12 +56,13 @@ describe("useVisibleServices", () => {
 
   let mounted: MountedHook<{
     services: DevService[];
+    loading: boolean;
     refresh: () => void;
   }> | undefined;
 
   beforeEach(() => {
-    vi.mocked(getVisibleServices).mockReset();
-    vi.mocked(getVisibleServices).mockReturnValue([daemon]);
+    vi.mocked(readVisibleServices).mockReset();
+    vi.mocked(readVisibleServices).mockResolvedValue([daemon]);
   });
 
   afterEach(() => {
@@ -78,11 +79,40 @@ describe("useVisibleServices", () => {
     await mounted.flush();
     expect(mounted.get().services).toEqual([daemon]);
 
-    vi.mocked(getVisibleServices).mockReturnValue([daemon, instance]);
+    vi.mocked(readVisibleServices).mockResolvedValue([daemon, instance]);
     await vi.advanceTimersByTimeAsync(15_000);
     await new Promise((resolve) => setTimeout(resolve, 5));
     await mounted.flush();
     expect(mounted.get().services).toEqual([daemon, instance]);
+  });
+
+  it("reports loading until the first scan lands, then paints the list", async () => {
+    let resolveScan: ((services: DevService[]) => void) | undefined;
+    vi.mocked(readVisibleServices).mockImplementation(
+      () => new Promise((resolve) => {
+        resolveScan = resolve;
+      }),
+    );
+    mounted = mountHook(() => useVisibleServices());
+    await mounted.flush();
+    expect(mounted.get().loading).toBe(true);
+    expect(mounted.get().services).toEqual([]);
+
+    resolveScan!([daemon]);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    await mounted.flush();
+    expect(mounted.get().loading).toBe(false);
+    expect(mounted.get().services).toEqual([daemon]);
+  });
+
+  it("clears loading and keeps the last list when a scan throws", async () => {
+    vi.mocked(readVisibleServices).mockRejectedValue(new Error("systemctl gone"));
+    mounted = mountHook(() => useVisibleServices());
+    await mounted.flush();
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    await mounted.flush();
+    expect(mounted.get().loading).toBe(false);
+    expect(mounted.get().services).toEqual([]);
   });
 
   it("keeps the current list when the snapshot is unchanged", async () => {
@@ -91,7 +121,7 @@ describe("useVisibleServices", () => {
     await new Promise((resolve) => setTimeout(resolve, 5));
     await mounted.flush();
     const first = mounted.get().services;
-    vi.mocked(getVisibleServices).mockReturnValue([
+    vi.mocked(readVisibleServices).mockResolvedValue([
       service({ id: "daemon", label: "daemon", status: "running" }),
     ]);
     mounted.get().refresh();
@@ -100,21 +130,26 @@ describe("useVisibleServices", () => {
     expect(mounted.get().services).toBe(first);
   });
 
-  it("ignores overlapping refresh while a snapshot is in flight", async () => {
+  it("queues a refresh raised while a scan is in flight instead of dropping it", async () => {
     mounted = mountHook(() => useVisibleServices());
     await mounted.flush();
     await new Promise((resolve) => setTimeout(resolve, 5));
     await mounted.flush();
+
     let calls = 0;
-    vi.mocked(getVisibleServices).mockImplementation(() => {
+    vi.mocked(readVisibleServices).mockImplementation(async () => {
       calls += 1;
-      mounted?.get().refresh();
+      // Re-entrant request: must not start a second concurrent scan, but must
+      // still run once this one finishes.
+      if (calls === 1) {
+        mounted?.get().refresh();
+      }
       return [instance];
     });
     mounted.get().refresh();
     await new Promise((resolve) => setTimeout(resolve, 5));
     await mounted.flush();
-    expect(calls).toBe(1);
+    expect(calls).toBe(2);
     expect(mounted.get().services).toEqual([instance]);
   });
 });

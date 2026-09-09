@@ -6,7 +6,11 @@ import {
   RUNTIMES_DIR,
   TURBOPANEL_ROOT,
 } from "./paths.ts";
-import { isDeveloperSurfaceInstance, readInstanceRuntime } from "./daemon-env.ts";
+import {
+  isDeveloperSurfaceInstance,
+  readInstanceRuntime,
+  type DaemonEnvSnapshot,
+} from "./daemon-env.ts";
 import { spawnSyncTrustedText } from "./spawn-trusted.ts";
 import { type InstallOutputHandler, runCaptured } from "./install-output.ts";
 import { syncDevToAllDaemons, updateConnectedDaemons } from "./developer-client.ts";
@@ -76,27 +80,38 @@ export function daemonMenuActions(_status: DevServiceStatus): DaemonActionId[] {
 
 export { cellTraceToggleLabel } from "./instance-trace-env.ts";
 
-export function developerMenuActions(status: DevServiceStatus | undefined): DaemonActionId[] {
+/**
+ * @param env Pre-read `daemon.env` snapshot. Pass it from React: without it this
+ *   re-reads and re-parses the file up to three times per call (~54ms when the
+ *   dev user cannot read it and each read falls back to `sudo -n cat`).
+ */
+export function developerMenuActions(
+  status: DevServiceStatus | undefined,
+  env?: DaemonEnvSnapshot,
+): DaemonActionId[] {
   if (!status || status === "uninstalled") {
     return [];
   }
 
+  const runtime = env ? env.runtime : readInstanceRuntime();
+
   // Open DuckDB UI needs /api/developer/v1/metrics/duckdb-ui, which only the
   // developer-surface build (src/deno-dev.ts) mounts — compiled and static
   // Deno builds run src/deno.ts and must not offer the action.
-  const developerSurfaceActions: DaemonActionId[] = isDeveloperSurfaceInstance()
-    ? ["open-duckdb-ui"]
-    : [];
-
-  const denoActions: DaemonActionId[] =
-    readInstanceRuntime() === "deno"
-      ? ["sync-dev-build", "rebuild-daemon-upgrade"]
+  const developerSurfaceActions: DaemonActionId[] =
+    (env ? isDeveloperSurfaceInstance(env) : isDeveloperSurfaceInstance())
+      ? ["open-duckdb-ui"]
       : [];
+
+  const denoActions: DaemonActionId[] = runtime === "deno"
+    ? ["sync-dev-build", "rebuild-daemon-upgrade"]
+    : [];
 
   // Tiers exist only where billing does (the Workers build). The saved copy is
   // restored by the dev overlay role on converge; this is the write side.
-  const workersActions: DaemonActionId[] =
-    readInstanceRuntime() === "workers" ? ["save-tier-catalogue"] : [];
+  const workersActions: DaemonActionId[] = runtime === "workers"
+    ? ["save-tier-catalogue"]
+    : [];
 
   return [
     "repair",

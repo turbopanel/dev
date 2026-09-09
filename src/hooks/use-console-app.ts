@@ -1,6 +1,5 @@
 import { useApp, useInput } from "ink";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { getVisibleServices } from "../dev-services.ts";
 import {
   isDestructiveDaemonAction,
   type DaemonActionId,
@@ -81,7 +80,10 @@ export type DeveloperView = "menu" | "cell-trace" | "run-tests";
 
 export function useConsoleApp() {
   const { exit } = useApp();
-  const initialAutoInstall = initialAutoInstallState();
+  // Lazily, ONCE. `initialAutoInstallState()` shells out to `command -v deno`,
+  // `deno --version` and `systemctl show` (~60ms); calling it in the render body
+  // froze Ink for that long on every repaint.
+  const [initialAutoInstall] = useState(initialAutoInstallState);
   const [activeArea, setActiveArea] = useState<ActiveArea>(
     initialAutoInstall.shouldAutoInstall ? "bootstrap" : "services",
   );
@@ -113,15 +115,20 @@ export function useConsoleApp() {
   const [serviceTestsRepoId, setServiceTestsRepoId] = useState<TestRepoId | null>(
     null,
   );
-  const { services: visibleServices, refresh: refreshServices } = useVisibleServices();
+  const {
+    services: visibleServices,
+    loading: servicesLoading,
+    refresh: refreshServices,
+  } = useVisibleServices();
   const autoInstallStarted = useRef(initialAutoInstall.shouldAutoInstall);
   // Idle launches must never auto-bootstrap later (e.g. after rebuild). The
   // post-bootstrap optional-services → converge chain is install-only.
   const allowAutoBootstrap = useRef(initialAutoInstall.shouldAutoInstall);
   const devEnvConvergeSelectionPinned = useRef(false);
-  const selectedServiceIdRef = useRef(
-    getVisibleServices()[initialAutoInstall.selectedServiceIndex]?.id ?? "daemon",
-  );
+  // Null until the first scan lands, then adopted from the list's first row.
+  // Seeding it with a `getVisibleServices()` call re-ran the whole systemd/Docker
+  // fan-out (~220ms) on every render — a `useRef` argument is evaluated each time.
+  const selectedServiceIdRef = useRef<string | null>(null);
 
   const handleDevEnvConvergeFinished = useCallback((success: boolean) => {
     allowAutoBootstrap.current = false;
@@ -524,6 +531,18 @@ export function useConsoleApp() {
 
     devEnvConvergeSelectionPinned.current = false;
 
+    // First non-empty scan: start on the list's first row (instance when the
+    // stack is up, otherwise the daemon), matching the pre-async behaviour.
+    if (selectedServiceIdRef.current === null) {
+      const first = visibleServices[initialAutoInstall.selectedServiceIndex];
+      if (!first) {
+        return;
+      }
+      selectedServiceIdRef.current = first.id;
+      setSelectedServiceIndex(initialAutoInstall.selectedServiceIndex);
+      return;
+    }
+
     const preservedIndex = visibleServices.findIndex(
       (service) => service.id === selectedServiceIdRef.current,
     );
@@ -535,7 +554,12 @@ export function useConsoleApp() {
     setSelectedServiceIndex((index) =>
       Math.min(index, Math.max(0, visibleServices.length - 1)),
     );
-  }, [visibleServices, daemonOperation, devEnvConverge.active]);
+  }, [
+    visibleServices,
+    daemonOperation,
+    devEnvConverge.active,
+    initialAutoInstall.selectedServiceIndex,
+  ]);
 
   const setSelectedServiceIndexById = useCallback((index: number) => {
     const service = visibleServices[index];
@@ -595,6 +619,7 @@ export function useConsoleApp() {
   return {
     activeArea,
     provisioning,
+    servicesLoading,
     selectedServiceIndex,
     selectedService,
     visibleServices,

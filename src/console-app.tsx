@@ -2,10 +2,12 @@ import React from "react";
 import { useWindowSize } from "ink";
 import { AppView } from "./app.tsx";
 import { useConsoleApp } from "./hooks/use-console-app.ts";
+import { useInstanceRuntime } from "./hooks/use-instance-runtime.ts";
 
 export function ConsoleApp() {
   const { columns, rows } = useWindowSize();
   const consoleApp = useConsoleApp();
+  const instanceRuntime = useInstanceRuntime();
 
   return (
     <AppView
@@ -17,6 +19,8 @@ export function ConsoleApp() {
       selectedServiceIndex={consoleApp.selectedServiceIndex}
       selectedServiceId={consoleApp.selectedService?.id ?? null}
       visibleServices={consoleApp.visibleServices}
+      servicesLoading={consoleApp.servicesLoading}
+      instanceRuntime={instanceRuntime}
       daemonOperation={consoleApp.daemonOperation}
       onProvisioningDone={consoleApp.handleProvisioningDone}
       onInstallFinished={consoleApp.handleInstallFinished}

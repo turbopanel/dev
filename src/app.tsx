@@ -46,6 +46,8 @@ type MainContentProps = Readonly<{
   height: number;
   selectedServiceIndex: number;
   visibleServices: DevService[];
+  servicesLoading?: boolean;
+  instanceRuntime?: "deno" | "workers";
   daemonOperation?: DaemonOperation | null;
   serviceOperation?: ServiceOperation | null;
   onServiceAction?: (serviceId: string, action: ServiceActionId) => void | Promise<void>;
@@ -87,6 +89,8 @@ function MainContent({
   height,
   selectedServiceIndex,
   visibleServices,
+  servicesLoading,
+  instanceRuntime,
   onProvisioningDone,
   onInstallFinished,
   onDaemonInstallDone,
@@ -220,6 +224,8 @@ function MainContent({
             width={width}
             height={height}
             services={visibleServices}
+            servicesLoading={servicesLoading}
+            instanceRuntime={instanceRuntime}
             selectedIndex={selectedServiceIndex}
             daemonOperation={daemonOperation}
             onDaemonAction={onDaemonAction}
@@ -258,6 +264,8 @@ type AppViewProps = Readonly<{
   selectedServiceIndex: number;
   selectedServiceId?: string | null;
   visibleServices: DevService[];
+  servicesLoading?: boolean;
+  instanceRuntime?: "deno" | "workers";
   daemonOperation?: DaemonOperation | null;
   serviceOperation?: ServiceOperation | null;
   onServiceAction?: (serviceId: string, action: ServiceActionId) => void | Promise<void>;
@@ -302,6 +310,8 @@ export function AppView({
   selectedServiceIndex,
   selectedServiceId,
   visibleServices,
+  servicesLoading,
+  instanceRuntime,
   daemonOperation,
   onProvisioningDone,
   onInstallFinished,
@@ -351,6 +361,7 @@ export function AppView({
     pendingOptionalServices,
     pendingDestructiveAction,
     serviceTestsRepoId,
+    instanceRuntime,
   });
 
   return (
@@ -374,6 +385,8 @@ export function AppView({
           height={contentHeight}
           selectedServiceIndex={selectedServiceIndex}
           visibleServices={visibleServices}
+          servicesLoading={servicesLoading}
+          instanceRuntime={instanceRuntime}
           daemonOperation={daemonOperation}
           onProvisioningDone={onProvisioningDone}
           onInstallFinished={onInstallFinished}

@@ -8,7 +8,7 @@ import { BORDER_COLOR } from "../theme.ts";
 /** Gray catalog rows stay aligned with optional dev service definitions. */
 export type CatalogOptionalServiceId = OptionalDevServiceId;
 
-const SERVICE_LIST_ORDER = [
+export const SERVICE_LIST_ORDER = [
   "instance",
   "daemon",
   "caddy",

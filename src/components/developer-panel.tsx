@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { useDaemonEnv } from "../hooks/use-daemon-env.ts";
 import { Box, Text, useInput } from "ink";
 import type { DevServiceStatus } from "../dev-services.ts";
 import {
@@ -96,7 +97,13 @@ function DeveloperMenuPanel({
   onDaemonAction?: (action: DaemonActionId) => void | Promise<void>;
   inputBlocked?: boolean;
 }>) {
-  const actions = developerMenuActions(daemonStatus);
+  // Memoized: `developerMenuActions` reads daemon.env, so calling it in the
+  // render body cost ~54ms per repaint on hosts where that needs sudo.
+  const daemonEnv = useDaemonEnv();
+  const actions = useMemo(
+    () => developerMenuActions(daemonStatus, daemonEnv),
+    [daemonStatus, daemonEnv],
+  );
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [message, setMessage] = useState<string | null>(null);
 
