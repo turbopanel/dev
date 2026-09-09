@@ -5,9 +5,12 @@ import { resolveDevRoot } from "./paths.ts";
 import { POSTGRES_CONTAINER_NAME } from "./platform-docker-resources.ts";
 
 /**
- * Dev-only: save the billing tier catalogue a superadmin entered through
- * Admin → Tiers into the dev checkout's gitignored `local/tiers.json`, so a
- * database reset or a VM rebuild does not mean typing seven tiers again. The
+ * Dev-only: save the billing tier catalogue a superadmin bound through
+ * Admin → Tiers (label → Stripe product) into the dev checkout's gitignored
+ * `local/tiers.json`, so a database reset or a VM rebuild does not mean
+ * picking eight products again. The file mirrors the `tier` table's columns
+ * verbatim and the restore is `insert … select *`, so a file saved under an
+ * older column shape is unrestorable — delete it and save again. The
  * dev overlay role `dev-tier-catalogue` restores the file on converge when
  * the tier table is empty. Nothing in the instance or daemon repos knows this
  * exists: it reads the dev Postgres container directly, exactly like the
@@ -19,23 +22,21 @@ const POSTGRES_DEV_USER = "turbopanel";
 const POSTGRES_DEV_DB = "turbopanel";
 
 /** `json_agg` of the whole table, keys = column names, so the restore can replay it verbatim. */
-const EXPORT_SQL = "select coalesce(json_agg(t order by t.generation, t.rank), '[]'::json) from tier t";
+const EXPORT_SQL = "select coalesce(json_agg(t order by t.rank), '[]'::json) from tier t";
 
 export function devTierCataloguePath(): string {
   return `${resolveDevRoot()}/dev/local/tiers.json`;
 }
 
-type TierRow = Record<string, unknown> & { generation?: unknown; rank?: unknown };
+type TierRow = Record<string, unknown> & { rank?: unknown };
 
-function tierOrder(row: TierRow): [number, number] {
-  const generation = typeof row.generation === "number" ? row.generation : Number.MAX_SAFE_INTEGER;
-  const rank = typeof row.rank === "number" ? row.rank : Number.MAX_SAFE_INTEGER;
-  return [generation, rank];
+function tierOrder(row: TierRow): number {
+  return typeof row.rank === "number" ? row.rank : Number.MAX_SAFE_INTEGER;
 }
 
 /**
  * The exported catalogue as it is written to disk: a JSON array of rows,
- * sorted by generation then rank, pretty-printed, trailing newline. Throws
+ * sorted by rank, pretty-printed, trailing newline. Throws
  * on anything that is not a JSON array so a psql error line never lands in
  * the file.
  */
@@ -45,11 +46,7 @@ export function normalizeTierCatalogue(raw: string): { text: string; rows: numbe
     throw new TypeError("tier catalogue export is not a JSON array");
   }
   const rows = (parsed as TierRow[]).filter((row) => typeof row === "object" && row !== null);
-  rows.sort((a, b) => {
-    const [ga, ra] = tierOrder(a);
-    const [gb, rb] = tierOrder(b);
-    return ga - gb || ra - rb;
-  });
+  rows.sort((a, b) => tierOrder(a) - tierOrder(b));
   return { text: `${JSON.stringify(rows, null, 2)}\n`, rows: rows.length };
 }
 

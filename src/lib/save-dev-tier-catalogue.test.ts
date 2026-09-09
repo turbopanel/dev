@@ -2,11 +2,11 @@ import { afterEach, describe, expect, it } from "vitest";
 import { devTierCataloguePath, normalizeTierCatalogue } from "./save-dev-tier-catalogue.ts";
 
 describe("normalizeTierCatalogue", () => {
-  it("sorts rows by generation then rank and pretty-prints with a trailing newline", () => {
+  it("sorts rows by rank and pretty-prints with a trailing newline", () => {
     const raw = JSON.stringify([
-      { id: "c", generation: 1, rank: 3, label: "S3" },
-      { id: "a", generation: 2, rank: 1, label: "S1" },
-      { id: "b", generation: 1, rank: 1, label: "S1" },
+      { id: "c", rank: 3, label: "S3" },
+      { id: "a", rank: 8, label: "SX" },
+      { id: "b", rank: 1, label: "S1" },
     ]);
     const out = normalizeTierCatalogue(raw);
     expect(out.rows).toBe(3);
