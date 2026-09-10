@@ -37,7 +37,8 @@ export function parseInstanceKeyringCurrentSecret(
 ): string | undefined {
   const trimmed = text.trim();
   if (!trimmed) return undefined;
-  const firstEntry = trimmed.split(",")[0] ?? "";
+  const firstComma = trimmed.indexOf(",");
+  const firstEntry = firstComma === -1 ? trimmed : trimmed.slice(0, firstComma);
   const colon = firstEntry.indexOf(":");
   if (colon <= 0) return undefined;
   const version = firstEntry.slice(0, colon);
@@ -218,7 +219,10 @@ function requestViaSocket(
   });
 }
 
-async function developerFetch<T>(
+/**
+ * @internal Exported for unit tests (GET default + socket error shaping).
+ */
+export async function developerFetch<T>(
   path: string,
   init?: { method: string; body?: unknown },
 ): Promise<T> {

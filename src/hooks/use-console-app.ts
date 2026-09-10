@@ -16,7 +16,10 @@ import {
 } from "../lib/service-restart.ts";
 import { readInstanceRuntime } from "../lib/daemon-env.ts";
 import { openDuckDbUi } from "../lib/duckdb-ui.ts";
-import { resolveDevEnvStartupPlan } from "../lib/dev-env-readiness.ts";
+import {
+  resolveDevEnvStartupPlan,
+  type DevEnvStartupPlan,
+} from "../lib/dev-env-readiness.ts";
 import {
   readCellTraceEnabled,
   setCellTraceEnabled,
@@ -63,6 +66,30 @@ export function initialDaemonOperation(shouldAutoInstall: boolean): DaemonOperat
     return "install";
   }
   return null;
+}
+
+/** Idle launches never auto-bootstrap later; this is the mount-time fallback only. */
+export function runAutoBootstrapIfNeeded(args: {
+  allowAutoBootstrap: boolean;
+  autoInstallStarted: { current: boolean };
+  daemonOperation: DaemonOperation | null;
+  resolvePlan: () => DevEnvStartupPlan;
+  startDaemonInstall: () => void;
+}): void {
+  if (!args.allowAutoBootstrap || args.autoInstallStarted.current || args.daemonOperation) {
+    return;
+  }
+  const plan = args.resolvePlan();
+  if (plan.action === "bootstrap") {
+    args.autoInstallStarted.current = true;
+    args.startDaemonInstall();
+  }
+}
+
+export function resolveConvergeMode(
+  convergeMode: PendingOptionalServices["convergeMode"],
+): "if-needed" | "force" {
+  return convergeMode ?? "force";
 }
 
 export function initialAutoInstallState(): {
@@ -193,14 +220,13 @@ export function useConsoleApp() {
   }, []);
 
   useEffect(() => {
-    if (!allowAutoBootstrap.current || autoInstallStarted.current || daemonOperation) {
-      return;
-    }
-    const plan = resolveDevEnvStartupPlan();
-    if (plan.action === "bootstrap") {
-      autoInstallStarted.current = true;
-      startDaemonInstall();
-    }
+    runAutoBootstrapIfNeeded({
+      allowAutoBootstrap: allowAutoBootstrap.current,
+      autoInstallStarted,
+      daemonOperation,
+      resolvePlan: resolveDevEnvStartupPlan,
+      startDaemonInstall,
+    });
   }, [visibleServices, daemonOperation, startDaemonInstall]);
 
   const restartInstanceWithOverlay = useCallback(async () => {
@@ -397,7 +423,7 @@ export function useConsoleApp() {
     }
 
     if (pending.mode === "converge") {
-      beginConverge(pending.convergeMode ?? "force", selection);
+      beginConverge(resolveConvergeMode(pending.convergeMode), selection);
       return;
     }
 

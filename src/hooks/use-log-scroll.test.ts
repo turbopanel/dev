@@ -83,6 +83,17 @@ describe("applyLogScrollKey", () => {
     ).toEqual({ scrollIndex: 9, followTail: true });
   });
 
+  it("scrolls down one page without re-enabling follow before the tail", () => {
+    expect(
+      applyLogScrollKey(
+        { scrollIndex: 2, followTail: false },
+        key({ pageDown: true }),
+        20,
+        3,
+      ),
+    ).toEqual({ scrollIndex: 5, followTail: false });
+  });
+
   it("jumps to the tail on End", () => {
     expect(applyLogScrollKey(base, key({ end: true }), 10, 3)).toEqual({
       scrollIndex: 9,

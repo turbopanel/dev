@@ -40,6 +40,26 @@ type LogHookState = {
   loading: boolean;
 };
 
+/** Apply a tail snapshot, ignoring stale keys and skipping unchanged idle polls. */
+export function applyServiceLogRefresh(
+  current: LogHookState,
+  nextKey: string,
+  next: ServiceLogLine[],
+): LogHookState {
+  if (current.cacheKey !== nextKey) {
+    return current;
+  }
+  const sameLines = serviceLogLinesEqual(current.lines, next);
+  if (sameLines && !current.loading) {
+    return current;
+  }
+  return {
+    cacheKey: nextKey,
+    lines: sameLines ? current.lines : next,
+    loading: false,
+  };
+}
+
 export function initialLogState(
   serviceId: string | null,
   byteFloor?: ServiceLogByteFloor | null,
@@ -86,20 +106,7 @@ export function useServiceLog(
         return;
       }
       serviceLogCache.set(nextKey, next);
-      setState((current) => {
-        if (current.cacheKey !== nextKey) {
-          return current;
-        }
-        const sameLines = serviceLogLinesEqual(current.lines, next);
-        if (sameLines && !current.loading) {
-          return current;
-        }
-        return {
-          cacheKey: nextKey,
-          lines: sameLines ? current.lines : next,
-          loading: false,
-        };
-      });
+      setState((current) => applyServiceLogRefresh(current, nextKey, next));
     };
 
     // setTimeout(0) yields so Ink can paint the title + spinner first.

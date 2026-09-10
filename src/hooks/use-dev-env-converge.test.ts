@@ -206,6 +206,47 @@ describe("trackConvergeServiceEvent", () => {
     expect(tracker.currentServiceId.current).toBeNull();
   });
 
+  it("does not clone phases when a ready service is closed again", () => {
+    const tracker = createTracker();
+    tracker.track({
+      _event: "v2_playbook_on_play_start",
+      play: { name: "postgres" },
+    });
+    tracker.track({
+      _event: "v2_playbook_on_play_start",
+      play: { name: "unrelated play" },
+    });
+    const afterReady = tracker.phases;
+    tracker.currentServiceId.current = "db";
+    tracker.track({ _event: "v2_playbook_on_stats", stats: {} });
+    expect(tracker.phases).toBe(afterReady);
+    expect(tracker.phases).toEqual({ db: "ready" });
+    expect(tracker.currentServiceId.current).toBeNull();
+  });
+
+  it("treats missing and blank play or task names as unmapped", () => {
+    const tracker = createTracker();
+    tracker.track({ _event: "v2_playbook_on_play_start" });
+    tracker.track({ _event: "v2_playbook_on_play_start", play: {} });
+    tracker.track({ _event: "v2_playbook_on_play_start", play: { name: "  " } });
+    tracker.track({ _event: "v2_playbook_on_task_start" });
+    tracker.track({ _event: "v2_playbook_on_task_start", task: {} });
+    tracker.track({ _event: "v2_playbook_on_task_start", task: { name: "  " } });
+    expect(tracker.currentServiceId.current).toBeNull();
+    expect(tracker.phases).toEqual({});
+  });
+
+  it("ignores Ansible events that do not drive converge tracking", () => {
+    const tracker = createTracker();
+    tracker.track({
+      _event: "v2_playbook_on_play_start",
+      play: { name: "postgres" },
+    });
+    tracker.track({ _event: "v2_playbook_on_notify" });
+    expect(tracker.currentServiceId.current).toBe("db");
+    expect(tracker.phases).toEqual({ db: "installing" });
+  });
+
   it("records unreachable and failed statuses from the current service", () => {
     const tracker = createTracker();
     tracker.track({
@@ -404,5 +445,33 @@ describe("useDevEnvConverge", () => {
     await mounted.flush();
     expect(mounted.get().state.active).toBe(false);
     expect(mounted.get().state.tasks).toEqual([]);
+  });
+
+  it("forwards runner step callbacks into the Ansible task list", async () => {
+    vi.mocked(installDevEnvironment).mockImplementation(
+      async (_onEvent, _onOutput, onStep) => {
+        if (typeof onStep !== "function") {
+          throw new TypeError("converge step callback was not provided");
+        }
+        onStep("Ensure Deno runtime", "running");
+        onStep("Ensure Deno runtime", "ok");
+      },
+    );
+    mounted = mountHook(() => useDevEnvConverge(onFinished));
+    await mounted.flush();
+    mounted.get().start("force", OPTIONAL_SELECTION);
+    await vi.waitFor(() => {
+      expect(onFinished).toHaveBeenCalledWith(true);
+    });
+    mounted.rerender();
+    await mounted.flush();
+    expect(mounted.get().state.tasks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          label: "Ensure Deno runtime",
+          status: "ok",
+        }),
+      ]),
+    );
   });
 });

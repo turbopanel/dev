@@ -1,7 +1,15 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, openSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
+
+vi.mock("node:fs", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs")>();
+  return {
+    ...actual,
+    openSync: vi.fn(actual.openSync),
+  };
+});
 
 vi.mock("./docker-access.ts", () => ({
   spawnDocker: vi.fn(() => null),
@@ -42,6 +50,7 @@ import {
 const mockedSpawnDocker = vi.mocked(spawnDocker);
 const mockedDockerOutputLines = vi.mocked(dockerOutputLines);
 const mockedSpawnSyncTrustedText = vi.mocked(spawnSyncTrustedText);
+const fsActual = await vi.importActual<typeof import("node:fs")>("node:fs");
 
 const originalFileLogPaths = Object.fromEntries(
   Object.entries(SERVICE_FILE_LOG_PATHS).map(([id, paths]) => [id, [...paths]]),
@@ -81,6 +90,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.mocked(openSync).mockImplementation(fsActual.openSync);
   for (const key of Object.keys(SERVICE_FILE_LOG_PATHS)) {
     delete SERVICE_FILE_LOG_PATHS[key];
   }
@@ -216,6 +226,65 @@ test("readServiceLogTail uses journalctl when file logs are empty", () => {
     "journal line two",
   ]);
   expect(mockedSpawnSyncTrustedText.mock.calls[0]?.[0]).toBe("sudo");
+});
+
+test("readServiceLogFileStat returns an empty floor for unknown services", () => {
+  expect(readServiceLogFileStat("not-a-service")).toEqual({});
+});
+
+test("readServiceLogTail drops a partial first line when the tail has no newline", () => {
+  const dir = mkdtempSync(join(tmpdir(), "tp-service-log-nonewline-"));
+  tempDirs.push(dir);
+  const logPath = join(dir, "instance.log");
+  writeFileSync(logPath, "ABCDEFGHIJ");
+  SERVICE_FILE_LOG_PATHS.instance = [logPath];
+
+  const lines = readServiceLogTail("instance", 20, { [logPath]: 2 });
+  expect(lines.map((line) => line.text).join("\n")).not.toContain("ABCDEFGHIJ");
+});
+
+test("readServiceLogTail reads only the tail window of a large file", () => {
+  const dir = mkdtempSync(join(tmpdir(), "tp-service-log-large-"));
+  tempDirs.push(dir);
+  const logPath = join(dir, "instance.log");
+  const keep = "kept-large-line\n";
+  writeFileSync(logPath, `${"x".repeat(70 * 1024)}\n${keep}`);
+  SERVICE_FILE_LOG_PATHS.instance = [logPath];
+
+  const lines = readServiceLogTail("instance", 10);
+  expect(lines.some((line) => line.text.includes("kept-large-line"))).toBe(true);
+});
+
+test("readServiceLogTail treats an unreadable existing file as empty", () => {
+  const dir = mkdtempSync(join(tmpdir(), "tp-service-log-unreadable-"));
+  tempDirs.push(dir);
+  const logPath = join(dir, "instance.log");
+  writeFileSync(logPath, "secret line\n");
+  SERVICE_FILE_LOG_PATHS.instance = [logPath];
+  vi.mocked(openSync).mockImplementation((path, flags, mode) => {
+    if (String(path) === logPath) {
+      throw new Error("EACCES");
+    }
+    return fsActual.openSync(path, flags, mode);
+  });
+
+  mockedSpawnSyncTrustedText.mockReturnValue(failedSpawn());
+  const lines = readServiceLogTail("instance", 20);
+  expect(lines[0]?.text).toContain("journalctl -u turbopanel-instance");
+});
+
+test("readServiceLogTail treats a successful journalctl with no stdout as empty", () => {
+  mockedSpawnSyncTrustedText.mockReturnValue({
+    status: 0,
+    stdout: undefined as unknown as string,
+    stderr: "",
+    pid: 0,
+    output: ["", "", ""],
+    signal: null,
+  });
+  const lines = readServiceLogTail("caddy", 20);
+  expect(lines).toHaveLength(1);
+  expect(lines[0]?.text).toContain("journalctl -u turbopanel-caddy");
 });
 
 test("readServiceLogTail uses docker logs for container-backed services", () => {

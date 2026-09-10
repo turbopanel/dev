@@ -66,6 +66,7 @@ import {
   requestDaemonRestart,
   syncDevBuildToDaemons,
   waitForDaemonRunning,
+  isDestructiveDaemonAction,
 } from "./daemon-actions.ts";
 
 const mockedIsDaemonSystemdInstalled = vi.mocked(isDaemonSystemdInstalled);
@@ -174,6 +175,25 @@ describe("daemon menus", () => {
     expect(actions).toContain("rebuild-daemon-upgrade");
   });
 
+  it("uses a pre-read daemon.env snapshot instead of re-reading the file", () => {
+    mockedReadInstanceRuntime.mockReturnValue("deno");
+    mockedIsDeveloperSurfaceInstance.mockReturnValue(true);
+    mockedReadInstanceRuntime.mockClear();
+    mockedIsDeveloperSurfaceInstance.mockClear();
+    const env = {
+      runtime: "workers" as const,
+      uiMode: "static" as const,
+      runMode: "compiled" as const,
+      devInstanceEnabled: false,
+    };
+    const actions = developerMenuActions("running", env);
+    expect(mockedReadInstanceRuntime).not.toHaveBeenCalled();
+    expect(mockedIsDeveloperSurfaceInstance).toHaveBeenCalledWith(env);
+    expect(actions).toContain("save-tier-catalogue");
+    expect(actions).not.toContain("sync-dev-build");
+    expect(actions).not.toContain("rebuild-daemon-upgrade");
+  });
+
   it("labels every action id", () => {
     mockedReadInstanceRuntime.mockReturnValue("deno");
     for (const id of developerMenuActions("running")) {
@@ -183,6 +203,12 @@ describe("daemon menus", () => {
 
   it("re-exports cellTraceToggleLabel", () => {
     expect(typeof cellTraceToggleLabel).toBe("function");
+  });
+
+  it("isDestructiveDaemonAction follows the warning table", () => {
+    expect(isDestructiveDaemonAction("purge")).toBe(true);
+    expect(isDestructiveDaemonAction("reset-dev-env")).toBe(true);
+    expect(isDestructiveDaemonAction("repair")).toBe(false);
   });
 });
 
@@ -223,6 +249,11 @@ describe("waitForDaemonRunning", () => {
     await expect(waitForDaemonRunning({ timeoutMs: 50, pollMs: 10 })).resolves.toBe(
       true,
     );
+  });
+
+  it("uses default timeout and poll when options are omitted", async () => {
+    mockedSpawnSyncTrustedText.mockReturnValue(textResult("active"));
+    await expect(waitForDaemonRunning()).resolves.toBe(true);
   });
 
   it("polls until active and reports elapsed time", async () => {
@@ -499,5 +530,12 @@ describe("rebuildDaemonAndUpgradeConnectedServers", () => {
     const lines: string[] = [];
     await rebuildDaemonAndUpgradeConnectedServers((line) => lines.push(line));
     expect(lines.at(-1)).toMatch(/No remote servers to upgrade/);
+  });
+
+  it("treats missing update results as empty", async () => {
+    mockedUpdateDaemons.mockResolvedValue({ ok: true });
+    const lines: string[] = [];
+    await rebuildDaemonAndUpgradeConnectedServers((line) => lines.push(line));
+    expect(lines.some((line) => /No attached daemons/.test(line))).toBe(true);
   });
 });

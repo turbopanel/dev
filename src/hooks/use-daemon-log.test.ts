@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DaemonLogLine } from "../lib/daemon-log.ts";
 import { mountHook, type MountedHook } from "./ink-hook-render.ts";
 import {
+  applyDaemonLogRefresh,
   emptyDaemonSnapshot,
   floorKey,
   initialDaemonState,
@@ -87,6 +88,28 @@ describe("initialDaemonState", () => {
     expect(state.floorKey).toBe(":");
     expect(state.snapshot.lines).toEqual([]);
     expect(state.loading).toBe(true);
+  });
+});
+
+describe("applyDaemonLogRefresh", () => {
+  it("keeps the current snapshot when the refresh key or floor changes", () => {
+    const current = {
+      refreshKey: 1,
+      floorKey: "1:2",
+      snapshot: emptyDaemonSnapshot(),
+      loading: false,
+    };
+    const next = {
+      stat: {
+        stdoutSize: 4,
+        stdoutMtimeMs: 0,
+        stderrSize: 0,
+        stderrMtimeMs: 0,
+      },
+      lines: [line("late")],
+    };
+    expect(applyDaemonLogRefresh(current, 0, "1:2", next)).toBe(current);
+    expect(applyDaemonLogRefresh(current, 1, "9:9", next)).toBe(current);
   });
 });
 

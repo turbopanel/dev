@@ -179,6 +179,19 @@ describe("dispatchAnsibleUiEvent", () => {
     ]);
   });
 
+  it("falls back to play when the play name is missing", () => {
+    const { state, setters } = createUi();
+    dispatchAnsibleUiEvent("v2_playbook_on_play_start", {
+      play: { uuid: "anon" },
+    }, setters);
+    expect(state.tasks[0]).toEqual({
+      id: "play:anon",
+      label: "play",
+      status: "running",
+      depth: 1,
+    });
+  });
+
   it("falls back to the play name when uuid is missing", () => {
     const { state, setters } = createUi();
     dispatchAnsibleUiEvent("v2_playbook_on_play_start", {
@@ -190,6 +203,29 @@ describe("dispatchAnsibleUiEvent", () => {
       status: "running",
       depth: 1,
     });
+  });
+
+  it("leaves non-running plays in place when a later play starts", () => {
+    const { state, setters } = createUi();
+    dispatchAnsibleUiEvent("v2_playbook_on_play_start", {
+      play: { name: "First", uuid: "one" },
+    }, setters);
+    dispatchAnsibleUiEvent("v2_playbook_on_task_start", {
+      task: { id: "t1", name: "Work" },
+    }, setters);
+    dispatchAnsibleUiEvent("v2_playbook_on_play_start", {
+      play: { name: "Second", uuid: "two" },
+    }, setters);
+    expect(state.tasks).toEqual([
+      { id: "play:one", label: "First", status: "ok", depth: 1 },
+      {
+        id: "task:t1",
+        label: "Work",
+        status: "running",
+        depth: 2,
+      },
+      { id: "play:two", label: "Second", status: "running", depth: 1 },
+    ]);
   });
 
   it("starts tasks from start and handler events", () => {
@@ -217,6 +253,19 @@ describe("dispatchAnsibleUiEvent", () => {
         depth: 2,
       },
     ]);
+  });
+
+  it("uses a generic task name when the event omits one", () => {
+    const { state, setters } = createUi();
+    dispatchAnsibleUiEvent("v2_playbook_on_task_start", {
+      task: { id: "t1" },
+    }, setters);
+    expect(state.tasks[0]).toEqual({
+      id: "task:t1",
+      label: "task",
+      status: "running",
+      depth: 2,
+    });
   });
 
   it("marks runner ok as changed when the host result changed", () => {
@@ -288,6 +337,25 @@ describe("dispatchAnsibleUiEvent", () => {
     await Promise.resolve();
     expect(state.error).toBe("task failed");
     expect(state.errorLogPath).toBeNull();
+  });
+
+  it("counts missing recap fields as zero and leaves finished tasks alone", () => {
+    const { state, setters } = createUi();
+    dispatchAnsibleUiEvent("v2_playbook_on_task_start", {
+      task: { id: "t1", name: "Work" },
+    }, setters);
+    dispatchAnsibleUiEvent("v2_runner_on_ok", {
+      task: { id: "t1", name: "Work" },
+    }, setters);
+    dispatchAnsibleUiEvent("v2_playbook_on_task_start", {
+      task: { id: "t2", name: "More" },
+    }, setters);
+    dispatchAnsibleUiEvent("v2_playbook_on_stats", {
+      stats: { localhost: {} },
+    }, setters);
+    expect(state.tasks.map((task) => task.status)).toEqual(["ok", "ok"]);
+    expect(state.recap).toBe("ok=0 changed=0 failed=0");
+    expect(state.done).toBe(false);
   });
 
   it("completes running tasks and sets recap on successful stats", () => {

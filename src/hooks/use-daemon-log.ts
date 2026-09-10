@@ -64,6 +64,27 @@ type DaemonHookState = {
   loading: boolean;
 };
 
+/** Apply a snapshot, ignoring stale keys/floors and skipping unchanged idle polls. */
+export function applyDaemonLogRefresh(
+  current: DaemonHookState,
+  refreshKey: number,
+  nextFloorKey: string,
+  next: DaemonLogSnapshot,
+): DaemonHookState {
+  if (current.refreshKey !== refreshKey || current.floorKey !== nextFloorKey) {
+    return current;
+  }
+  if (snapshotEqual(current.snapshot, next) && !current.loading) {
+    return current;
+  }
+  return {
+    refreshKey,
+    floorKey: nextFloorKey,
+    snapshot: next,
+    loading: false,
+  };
+}
+
 export function floorKey(byteFloor?: DaemonLogByteFloor | null): string {
   return `${byteFloor?.stdout ?? ""}:${byteFloor?.stderr ?? ""}`;
 }
@@ -105,20 +126,9 @@ export function useDaemonLog(
         return;
       }
       daemonLogCache = next;
-      setState((current) => {
-        if (current.refreshKey !== refreshKey || current.floorKey !== nextFloorKey) {
-          return current;
-        }
-        if (snapshotEqual(current.snapshot, next) && !current.loading) {
-          return current;
-        }
-        return {
-          refreshKey,
-          floorKey: nextFloorKey,
-          snapshot: next,
-          loading: false,
-        };
-      });
+      setState((current) =>
+        applyDaemonLogRefresh(current, refreshKey, nextFloorKey, next)
+      );
     };
 
     const deferId = setTimeout(() => {

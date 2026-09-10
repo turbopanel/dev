@@ -191,6 +191,13 @@ test("buildTestCommand uses vendored node and pnpm when bins are omitted", () =>
   expect(ui.label).toBe("pnpm test");
 });
 
+test("buildTestCommand resolves Deno itself when resolveDenoBin is omitted", () => {
+  const daemon = buildTestCommand("turbopaneld", "test");
+  expect(daemon.cmd[1]).toBe("task");
+  expect(daemon.cmd[2]).toBe("test");
+  expect(daemon.cmd[0]?.length).toBeGreaterThan(0);
+});
+
 test("runRepoTests streams banner lines and reports exit code", async () => {
   const lines: string[] = [];
   const result = await runRepoTests("ui", "test", (line) => lines.push(line), {
@@ -242,6 +249,23 @@ test("runRepoTests falls back to catalog builders when deps omit them", async ()
     },
   });
   expect(result).toEqual({ exitCode: 0, aborted: false, logPath: null });
+});
+
+test("runRepoTests uses runCaptured when deps omit run", async () => {
+  const result = await runRepoTests("ui", "lint", undefined, {
+    persistLog: false,
+    deps: {
+      buildCommand: () => ({
+        cwd: "/tmp",
+        cmd: ["/bin/true"],
+        label: "true",
+      }),
+      pathEnv: () => ({ PATH: "/usr/bin:/bin" }),
+    },
+  });
+  expect(result.exitCode).toBe(0);
+  expect(result.aborted).toBe(false);
+  expect(result.logPath).toBeNull();
 });
 
 test("runRepoTests persists a transcript when openLog is provided", async () => {

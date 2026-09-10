@@ -172,6 +172,15 @@ describe("canRunServiceAction", () => {
     expect(canRunServiceAction("instance", "restart", "running", "deno")).toBe(
       false,
     );
+
+    spawnHarness.spawnSyncTrustedText.mockReturnValue({
+      status: 0,
+      stdout: undefined as unknown as string,
+      stderr: "",
+    });
+    expect(canRunServiceAction("instance", "restart", "running", "deno")).toBe(
+      false,
+    );
   });
 
   test("blocks restart on uninstalled rows and enable/disable on current state", () => {

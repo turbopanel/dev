@@ -315,6 +315,52 @@ test("openServiceLogPager runs the pager and reports a failed exit", () => {
   }
 });
 
+test("resolveServiceLogPager treats a PATH hit with empty stdout as missing less", () => {
+  vi.mocked(spawnSyncTrustedText).mockReturnValue({
+    status: 0,
+    stdout: undefined,
+    stderr: "",
+    pid: 0,
+    output: ["", "", ""],
+    signal: null,
+  } as never);
+  const pager = resolveServiceLogPager("daemon", 10, {
+    pathExists: (path) => path === DAEMON_LOG_PATH,
+    pathSize: () => 12,
+  });
+  expect(pager?.command).toBe("tail");
+});
+
+test("openServiceLogPager restores previous SIGINT listeners and null status as failure", () => {
+  const writes: string[] = [];
+  const write = vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
+    writes.push(String(chunk));
+    return true;
+  });
+  const previous = (): void => undefined;
+  process.on("SIGINT", previous);
+  vi.mocked(existsSync).mockImplementation((path) => path === DAEMON_LOG_PATH);
+  vi.mocked(statSync).mockReturnValue({ size: 40 } as Stats);
+  vi.mocked(spawnSyncTrustedText).mockReturnValue(
+    spawnRet(0, "/usr/bin/less\n") as never,
+  );
+  vi.mocked(spawnSyncTrusted)
+    .mockReturnValueOnce(
+      spawnRet(null as unknown as number, "", { signal: "SIGTERM" }) as never,
+    )
+    .mockReturnValueOnce(spawnRet(0) as never);
+  try {
+    openServiceLogPager("daemon");
+    expect(writes.some((line) => line.includes("exited with status 1"))).toBe(
+      true,
+    );
+    expect(process.listeners("SIGINT")).toContain(previous);
+  } finally {
+    process.off("SIGINT", previous);
+    write.mockRestore();
+  }
+});
+
 test("openServiceLogPager treats pager SIGINT and spawn errors as a return to the TUI", () => {
   const write = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
   vi.mocked(existsSync).mockImplementation((path) => path === DAEMON_LOG_PATH);

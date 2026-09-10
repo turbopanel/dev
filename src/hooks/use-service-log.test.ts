@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ServiceLogLine } from "../lib/service-log.ts";
 import { mountHook, type MountedHook } from "./ink-hook-render.ts";
 import {
+  applyServiceLogRefresh,
   initialLogState,
   resetServiceLogCache,
   serviceLogCacheKey,
@@ -44,6 +45,27 @@ describe("initialLogState", () => {
       lines: [],
       loading: true,
     });
+  });
+});
+
+describe("applyServiceLogRefresh", () => {
+  it("keeps the current snapshot when the cache key is stale", () => {
+    const current = {
+      cacheKey: "svc-b",
+      lines: [{ text: "kept", time: "t" }],
+      loading: false,
+    };
+    expect(
+      applyServiceLogRefresh(current, "svc-a", [{ text: "late", time: "t" }]),
+    ).toBe(current);
+  });
+
+  it("reuses the current line array when the first read matches an empty tail", () => {
+    const current = { cacheKey: "svc", lines: [], loading: true };
+    const next: ServiceLogLine[] = [];
+    const applied = applyServiceLogRefresh(current, "svc", next);
+    expect(applied.loading).toBe(false);
+    expect(applied.lines).toBe(current.lines);
   });
 });
 
@@ -130,6 +152,14 @@ describe("useServiceLog", () => {
     await vi.advanceTimersByTimeAsync(50);
     await mounted.flush();
     expect(mounted.get().lines).toEqual([{ text: "svc-b", time: "t" }]);
+  });
+
+  it("keeps the current line array when the first read is empty", async () => {
+    mounted = mountHook(() => useServiceLog("svc-empty-first"));
+    await mounted.flush();
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    await mounted.flush();
+    expect(mounted.get()).toEqual({ lines: [], loading: false });
   });
 
   it("drops a refresh that finishes after unmount", async () => {

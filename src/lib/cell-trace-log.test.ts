@@ -5,6 +5,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 const tempDirs: string[] = [];
 const instancePaths: string[] = [];
+let instancePathsMissing = false;
 
 vi.mock("node:fs", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs")>();
@@ -21,7 +22,7 @@ vi.mock("./service-log.ts", async (importOriginal) => {
     SERVICE_FILE_LOG_PATHS: new Proxy(actual.SERVICE_FILE_LOG_PATHS, {
       get(target, prop, receiver) {
         if (prop === "instance") {
-          return instancePaths;
+          return instancePathsMissing ? undefined : instancePaths;
         }
         return Reflect.get(target, prop, receiver);
       },
@@ -45,6 +46,7 @@ import { readServiceLogFileStat } from "./service-log.ts";
 const fsActual = await vi.importActual<typeof import("node:fs")>("node:fs");
 
 beforeEach(() => {
+  instancePathsMissing = false;
   const dir = mkdtempSync(join(tmpdir(), "tp-cell-trace-log-"));
   tempDirs.push(dir);
   const errPath = join(dir, "instance.err.log");
@@ -147,6 +149,13 @@ test("readCellTraceLogTail drops a partial first line past the tail window", () 
 
 test("readCellTraceLogTail returns empty-state when the tail has no newline", () => {
   writeFileSync(instancePaths[1]!, `${"y".repeat(70 * 1024)}daemon-cell-no-nl`);
+  const lines = readCellTraceLogTail(10);
+  expect(lines).toHaveLength(1);
+  expect(lines[0]?.text).toContain("No cell trace lines yet");
+});
+
+test("readCellTraceLogTail treats a missing instance path list as empty", () => {
+  instancePathsMissing = true;
   const lines = readCellTraceLogTail(10);
   expect(lines).toHaveLength(1);
   expect(lines[0]?.text).toContain("No cell trace lines yet");

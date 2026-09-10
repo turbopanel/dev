@@ -19,10 +19,10 @@ export default mergeConfig(
         // ordinary churn passes and a real regression fails. Raise them when
         // coverage rises; do not lower them to make a red run go green.
         thresholds: {
-          statements: 86,
-          branches: 76,
-          functions: 88,
-          lines: 87,
+          statements: 98,
+          branches: 98,
+          functions: 97,
+          lines: 99,
         },
         exclude: [
           "**/*.test.*",

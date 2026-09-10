@@ -179,6 +179,36 @@ test("LogFileTailer ignores an empty sudo tail chunk", () => {
   expect(lines).toEqual([]);
 });
 
+test("LogFileTailer skips a zero-length chunk when sudo reports a negative size", () => {
+  const missing = join(tmpdir(), "tp-log-tail-negative-size.log");
+  mockedSpawn.mockReturnValue({
+    status: 1,
+    stdout: "",
+    stderr: "",
+    pid: 0,
+    output: [],
+    signal: null,
+  });
+  const tailer = new LogFileTailer([missing]);
+  mockedSpawn.mockReturnValue(okSpawn("-5\n"));
+  const lines: string[] = [];
+  tailer.drain((line) => lines.push(line));
+  expect(lines).toEqual([]);
+});
+
+test("LogFileTailer treats a missing stored offset as the start of the file", () => {
+  const dir = mkdtempSync(join(tmpdir(), "tp-log-tail-offset-"));
+  tempDirs.push(dir);
+  const path = join(dir, "svc.log");
+  writeFileSync(path, "replayed\n");
+  const tailer = new LogFileTailer([path]);
+  const internal = tailer as unknown as { offsets: Map<string, number> };
+  internal.offsets.set(path, undefined as unknown as number);
+  const lines: string[] = [];
+  tailer.drain((line) => lines.push(line));
+  expect(lines).toEqual(["replayed"]);
+});
+
 test("LogFileTailer treats a failed sudo stat as a missing file", () => {
   mockedSpawn.mockReturnValue({
     status: 1,

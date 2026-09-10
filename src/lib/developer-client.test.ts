@@ -49,7 +49,7 @@ const mockedHttpRequest = vi.mocked(
   ) => ClientRequest,
 );
 
-function mockSocketHttpResponse(status: number, body: string): void {
+function mockSocketHttpResponse(status: number | undefined, body: string): void {
   mockedHttpRequest.mockImplementation((_options, callback) => {
     const req = new EventEmitter() as EventEmitter & {
       write: ReturnType<typeof vi.fn>;
@@ -64,7 +64,9 @@ function mockSocketHttpResponse(status: number, body: string): void {
     });
     req.end = vi.fn(() => {
       const res = new EventEmitter() as EventEmitter & { statusCode?: number };
-      res.statusCode = status;
+      if (status !== undefined) {
+        res.statusCode = status;
+      }
       queueMicrotask(() => {
         if (typeof callback === "function") {
           callback(res as IncomingMessage);
@@ -79,7 +81,7 @@ function mockSocketHttpResponse(status: number, body: string): void {
   });
 }
 
-function mockSocketHttpError(error: Error): void {
+function mockSocketHttpError(error: unknown): void {
   mockedHttpRequest.mockImplementation(() => {
     const req = new EventEmitter() as EventEmitter & {
       write: ReturnType<typeof vi.fn>;
@@ -423,6 +425,83 @@ describe("developerFetch sync helpers", () => {
     await expect(syncDevToAllDaemons()).rejects.toThrow(
       "instance Unix socket unavailable (/run/turbopanel/instance.sock): connect ENOENT",
     );
+  });
+
+  it("stringifies non-Error socket failures", async () => {
+    vi.doMock("./daemon-env.ts", () => ({
+      readInstanceRuntime: () => "deno",
+    }));
+    mockFsMap([[instanceSecretsPath(), `1:${CURRENT_SECRET}`]]);
+    mockSocketHttpError("connect ECONNREFUSED");
+    const { syncDevToAllDaemons } = await import("./developer-client.ts");
+    await expect(syncDevToAllDaemons()).rejects.toThrow(
+      "instance Unix socket unavailable (/run/turbopanel/instance.sock): connect ECONNREFUSED",
+    );
+  });
+
+  it("treats a missing HTTP status as 500", async () => {
+    vi.doMock("./daemon-env.ts", () => ({
+      readInstanceRuntime: () => "deno",
+    }));
+    mockFsMap([[instanceSecretsPath(), `1:${CURRENT_SECRET}`]]);
+    mockSocketHttpResponse(undefined, "no status");
+    const { syncDevToAllDaemons } = await import("./developer-client.ts");
+    await expect(syncDevToAllDaemons()).rejects.toThrow(
+      "/api/developer/v1/daemon/sync-dev failed: HTTP 500",
+    );
+  });
+
+  it("omits Local-Console authorization when the keyring vanishes after preflight", async () => {
+    vi.doMock("./daemon-env.ts", () => ({
+      readInstanceRuntime: () => "deno",
+    }));
+    let reads = 0;
+    mockedReadFileSync.mockImplementation((path) => {
+      if (String(path) !== instanceSecretsPath()) {
+        throw fsError("ENOENT");
+      }
+      reads += 1;
+      if (reads === 1) {
+        return `1:${CURRENT_SECRET}`;
+      }
+      throw fsError("ENOENT");
+    });
+    mockSocketHttpResponse(200, JSON.stringify({ ok: true }));
+    const { syncDevToAllDaemons } = await import("./developer-client.ts");
+    await expect(syncDevToAllDaemons()).resolves.toEqual({ ok: true });
+    const options = mockedHttpRequest.mock.calls[0]?.[0];
+    if (options === undefined || typeof options !== "object") {
+      throw new TypeError("expected http.request options object");
+    }
+    const headers = "headers" in options ? options.headers : undefined;
+    if (headers === undefined || typeof headers !== "object") {
+      throw new TypeError("expected Local-Console request headers");
+    }
+    expect(headers).not.toHaveProperty("authorization");
+  });
+
+  it("defaults developerFetch to GET when init is omitted", async () => {
+    vi.doMock("./daemon-env.ts", () => ({
+      readInstanceRuntime: () => "deno",
+    }));
+    mockFsMap([[instanceSecretsPath(), `1:${CURRENT_SECRET}`]]);
+    mockSocketHttpResponse(200, JSON.stringify({ ok: true }));
+    const { developerFetch } = await import("./developer-client.ts");
+    await expect(developerFetch("/api/developer/v1/status")).resolves.toEqual({
+      ok: true,
+    });
+    const options = mockedHttpRequest.mock.calls[0]?.[0];
+    if (options === undefined || typeof options !== "object") {
+      throw new TypeError("expected http.request options object");
+    }
+    expect(options).toMatchObject({
+      path: "/api/developer/v1/status",
+      method: "GET",
+    });
+    const req = mockedHttpRequest.mock.results[0]?.value as {
+      write?: ReturnType<typeof vi.fn>;
+    };
+    expect(req.write).not.toHaveBeenCalled();
   });
 
   it("POSTs startDuckdbUi to the metrics duckdb-ui route", async () => {

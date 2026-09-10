@@ -1,9 +1,13 @@
 import { expect, test, vi } from "vitest";
-import { mergeEnvFile, readEnvFile } from "./env-file.ts";
+import { mergeEnvFile, readEnvFile, readEnvFileAsync } from "./env-file.ts";
 import {
   buildDaemonBaseEnvEntries,
   isDeveloperSurfaceInstance,
   isDevInstanceEnabled,
+  readDaemonEnvSnapshotAsync,
+  readInstanceRunMode,
+  readInstanceRuntime,
+  readInstanceUiMode,
   writeDaemonBaseEnv,
   writeDaemonInstanceEnv,
 } from "./daemon-env.ts";
@@ -15,6 +19,7 @@ vi.mock("./env-file.ts", async (importOriginal) => {
     ...actual,
     mergeEnvFile: vi.fn(),
     readEnvFile: vi.fn(() => ""),
+    readEnvFileAsync: vi.fn(async () => ""),
   };
 });
 
@@ -109,4 +114,60 @@ test("isDevInstanceEnabled is true only when TURBOPANEL_DEV_INSTANCE=1", () => {
   expect(isDevInstanceEnabled()).toBe(false);
   mockedReadEnvFile.mockReturnValue("");
   expect(isDevInstanceEnabled()).toBe(false);
+});
+
+test("readInstanceRuntime is workers only when the env value is workers", () => {
+  const mockedReadEnvFile = vi.mocked(readEnvFile);
+  mockedReadEnvFile.mockReturnValue("TURBOPANEL_INSTANCE_RUNTIME=workers\n");
+  expect(readInstanceRuntime()).toBe("workers");
+  mockedReadEnvFile.mockReturnValue("TURBOPANEL_INSTANCE_RUNTIME=deno\n");
+  expect(readInstanceRuntime()).toBe("deno");
+  mockedReadEnvFile.mockReturnValue("");
+  expect(readInstanceRuntime()).toBe("deno");
+});
+
+test("readInstanceUiMode is static only when TURBOPANEL_UI_MODE=static", () => {
+  const mockedReadEnvFile = vi.mocked(readEnvFile);
+  mockedReadEnvFile.mockReturnValue("TURBOPANEL_UI_MODE=static\n");
+  expect(readInstanceUiMode()).toBe("static");
+  mockedReadEnvFile.mockReturnValue("TURBOPANEL_UI_MODE=dev\n");
+  expect(readInstanceUiMode()).toBe("dev");
+  mockedReadEnvFile.mockReturnValue("");
+  expect(readInstanceUiMode()).toBe("dev");
+});
+
+test("readInstanceRunMode is compiled only when TURBOPANEL_INSTANCE_RUN_MODE=compiled", () => {
+  const mockedReadEnvFile = vi.mocked(readEnvFile);
+  mockedReadEnvFile.mockReturnValue("TURBOPANEL_INSTANCE_RUN_MODE=compiled\n");
+  expect(readInstanceRunMode()).toBe("compiled");
+  mockedReadEnvFile.mockReturnValue("TURBOPANEL_INSTANCE_RUN_MODE=source\n");
+  expect(readInstanceRunMode()).toBe("source");
+  mockedReadEnvFile.mockReturnValue("");
+  expect(readInstanceRunMode()).toBe("source");
+});
+
+test("readDaemonEnvSnapshotAsync parses the same flags as the sync snapshot", async () => {
+  vi.mocked(readEnvFileAsync).mockResolvedValue(
+    [
+      "TURBOPANEL_INSTANCE_RUNTIME=workers",
+      "TURBOPANEL_UI_MODE=static",
+      "TURBOPANEL_INSTANCE_RUN_MODE=compiled",
+      "TURBOPANEL_DEV_INSTANCE=1",
+    ].join("\n"),
+  );
+
+  await expect(readDaemonEnvSnapshotAsync()).resolves.toEqual({
+    runtime: "workers",
+    uiMode: "static",
+    runMode: "compiled",
+    devInstanceEnabled: true,
+  });
+
+  vi.mocked(readEnvFileAsync).mockResolvedValue("");
+  await expect(readDaemonEnvSnapshotAsync()).resolves.toEqual({
+    runtime: "deno",
+    uiMode: "dev",
+    runMode: "source",
+    devInstanceEnabled: false,
+  });
 });

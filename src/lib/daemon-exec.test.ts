@@ -165,6 +165,11 @@ describe("resolveDenoBinVersion", () => {
     mockedSpawnSync.mockReturnValue(syncResult(0, "not-deno 9.9.9\n"));
     expect(resolveDenoBinVersion("/missing/deno")).toBeNull();
   });
+
+  it("parses a version line that has no trailing newline", () => {
+    mockedSpawnSync.mockReturnValue(syncResult(0, `deno ${DENO_VERSION}`));
+    expect(resolveDenoBinVersion("/usr/bin/deno")).toBe(DENO_VERSION);
+  });
 });
 
 describe("lookupHostDenoBin / resolveHostDenoBin", () => {
@@ -316,6 +321,36 @@ describe("ensureBootstrapDeno", () => {
     );
     expect(mockedRunCaptured).toHaveBeenCalledTimes(1);
     expect(String(mockedRunCaptured.mock.calls[0]?.[0]?.[4])).toContain("ln -sfn");
+  });
+
+  it("warns with unknown version when host Deno will not report a version", async () => {
+    installSpawnMocks({
+      hostDeno: "/usr/bin/deno",
+      executable: new Set([PINNED_DENO, VENDORED_DENO_BIN]),
+    });
+    mockedSpawnSync.mockImplementation((command, args) => {
+      const script = Array.isArray(args) ? String(args[1] ?? "") : "";
+      if (Array.isArray(args) && args[0] === "--version") {
+        return syncResult(1, "");
+      }
+      if (command === "/bin/sh" && script === "command -v deno") {
+        return syncResult(0, "/usr/bin/deno");
+      }
+      if (command === "/bin/sh" && script.startsWith("test -x ")) {
+        return syncResult(0);
+      }
+      if (command === "/bin/sh" && script.startsWith("test -w ")) {
+        return syncResult(1);
+      }
+      return syncResult(1);
+    });
+    const onOutput = vi.fn();
+    await ensureBootstrapDeno(onOutput);
+    expect(onOutput).toHaveBeenCalledWith(
+      expect.stringContaining(
+        `Host Deno (unknown version) does not match pinned ${DENO_VERSION}`,
+      ),
+    );
   });
 
   it("repairs current/bin symlinks when the pinned binary is already present", async () => {

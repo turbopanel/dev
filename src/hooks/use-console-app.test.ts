@@ -5,6 +5,8 @@ import { mountHook, type MountedHook } from "./ink-hook-render.ts";
 import {
   initialAutoInstallState,
   initialDaemonOperation,
+  resolveConvergeMode,
+  runAutoBootstrapIfNeeded,
   useConsoleApp,
 } from "./use-console-app.ts";
 
@@ -24,7 +26,25 @@ const harness = vi.hoisted(() => {
     refreshServices: vi.fn(),
     startDevEnvConverge: vi.fn(),
     dismissError: vi.fn(),
+    exit: vi.fn(),
     convergeOnFinished: undefined as ((success: boolean) => void) | undefined,
+  };
+});
+
+vi.mock("ink", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("ink")>();
+  return {
+    ...actual,
+    useApp: () => {
+      const app = actual.useApp();
+      return {
+        ...app,
+        exit: () => {
+          harness.exit();
+          app.exit();
+        },
+      };
+    },
   };
 });
 
@@ -171,6 +191,84 @@ describe("initialAutoInstallState", () => {
   });
 });
 
+describe("runAutoBootstrapIfNeeded", () => {
+  it("starts daemon install when auto-bootstrap is allowed and the plan says bootstrap", () => {
+    const autoInstallStarted = { current: false };
+    const startDaemonInstall = vi.fn();
+    runAutoBootstrapIfNeeded({
+      allowAutoBootstrap: true,
+      autoInstallStarted,
+      daemonOperation: null,
+      resolvePlan: () => ({ action: "bootstrap", reasons: ["missing unit"] }),
+      startDaemonInstall,
+    });
+    expect(autoInstallStarted.current).toBe(true);
+    expect(startDaemonInstall).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not probe the plan when auto-bootstrap is disallowed", () => {
+    const resolvePlan = vi.fn();
+    const startDaemonInstall = vi.fn();
+    runAutoBootstrapIfNeeded({
+      allowAutoBootstrap: false,
+      autoInstallStarted: { current: false },
+      daemonOperation: null,
+      resolvePlan,
+      startDaemonInstall,
+    });
+    expect(resolvePlan).not.toHaveBeenCalled();
+    expect(startDaemonInstall).not.toHaveBeenCalled();
+  });
+
+  it("skips when auto-install has already started", () => {
+    const resolvePlan = vi.fn();
+    const startDaemonInstall = vi.fn();
+    runAutoBootstrapIfNeeded({
+      allowAutoBootstrap: true,
+      autoInstallStarted: { current: true },
+      daemonOperation: null,
+      resolvePlan,
+      startDaemonInstall,
+    });
+    expect(resolvePlan).not.toHaveBeenCalled();
+    expect(startDaemonInstall).not.toHaveBeenCalled();
+  });
+
+  it("skips when a daemon operation is already running", () => {
+    const resolvePlan = vi.fn();
+    const startDaemonInstall = vi.fn();
+    runAutoBootstrapIfNeeded({
+      allowAutoBootstrap: true,
+      autoInstallStarted: { current: false },
+      daemonOperation: "install",
+      resolvePlan,
+      startDaemonInstall,
+    });
+    expect(resolvePlan).not.toHaveBeenCalled();
+    expect(startDaemonInstall).not.toHaveBeenCalled();
+  });
+
+  it("does not start when the plan is idle", () => {
+    const startDaemonInstall = vi.fn();
+    runAutoBootstrapIfNeeded({
+      allowAutoBootstrap: true,
+      autoInstallStarted: { current: false },
+      daemonOperation: null,
+      resolvePlan: () => ({ action: "idle", reasons: [] }),
+      startDaemonInstall,
+    });
+    expect(startDaemonInstall).not.toHaveBeenCalled();
+  });
+});
+
+describe("resolveConvergeMode", () => {
+  it("defaults a missing converge mode to force", () => {
+    expect(resolveConvergeMode(undefined)).toBe("force");
+    expect(resolveConvergeMode("if-needed")).toBe("if-needed");
+    expect(resolveConvergeMode("force")).toBe("force");
+  });
+});
+
 describe("useConsoleApp", () => {
   type Hook = ReturnType<typeof useConsoleApp>;
   let mounted: MountedHook<Hook> | undefined;
@@ -182,6 +280,7 @@ describe("useConsoleApp", () => {
     harness.refreshServices.mockReset();
     harness.startDevEnvConverge.mockReset();
     harness.dismissError.mockReset();
+    harness.exit.mockReset();
     vi.mocked(resolveDevEnvStartupPlan).mockReset();
     vi.mocked(resolveDevEnvStartupPlan).mockReturnValue({
       action: "idle",
@@ -369,6 +468,8 @@ describe("useConsoleApp", () => {
     expect((await settle()).daemonOperation).toBe("sync-dev-build");
     await (await settle()).handleDaemonAction("rebuild-daemon-upgrade");
     expect((await settle()).daemonOperation).toBe("rebuild-daemon-upgrade");
+    await (await settle()).handleDaemonAction("save-tier-catalogue");
+    expect((await settle()).daemonOperation).toBe("save-tier-catalogue");
     await (await settle()).handleDaemonAction("repair");
     expect((await settle()).daemonOperation).toBe("install");
     await (await settle()).handleDaemonAction("restart");
@@ -438,10 +539,13 @@ describe("useConsoleApp", () => {
     expect(persistOptionalServiceToggle).toHaveBeenCalledWith("ui", true);
     await app.handleServiceAction("ui", "disable");
     expect(persistOptionalServiceToggle).toHaveBeenCalledWith("ui", false);
+    await app.handleServiceAction("ui", "open");
+    expect(runServiceAction).toHaveBeenCalledWith("ui", "open");
+    expect(persistOptionalServiceToggle).toHaveBeenCalledTimes(2);
 
     vi.mocked(canRunServiceAction).mockReturnValueOnce(false);
     await app.handleServiceAction("ui", "open");
-    expect(runServiceAction).toHaveBeenCalledTimes(2);
+    expect(runServiceAction).toHaveBeenCalledTimes(3);
 
     await app.handleServiceAction("instance", "switch-deno");
     expect(watchInstanceRuntimeSwitch).not.toHaveBeenCalled();
@@ -591,5 +695,133 @@ describe("useConsoleApp", () => {
       "instance",
       expect.any(Function),
     );
+  });
+
+  it("opens on the bootstrap area when the host still needs install", async () => {
+    vi.mocked(resolveDevEnvStartupPlan).mockReturnValue({
+      action: "bootstrap",
+      reasons: ["missing unit"],
+    });
+    const app = await mountApp();
+    expect(app.activeArea).toBe("bootstrap");
+    expect(app.provisioning).toBe(true);
+    expect(app.daemonOperation).toBe("install");
+  });
+
+  it("installs without moving the cursor when the daemon row is missing", async () => {
+    harness.services = [svc("instance"), svc("ui")];
+    const app = await mountApp();
+    expect(app.selectedService?.id).toBe("instance");
+    await app.handleDaemonAction("install");
+    const next = await settle();
+    expect(next.daemonOperation).toBe("install");
+    expect(next.activeArea).toBe("bootstrap");
+    expect(next.selectedService?.id).toBe("instance");
+  });
+
+  it("confirms a non-daemon restart and appends overlay log lines", async () => {
+    vi.mocked(watchServiceRestart).mockImplementation(
+      async (_serviceId, _label, appendLog) => {
+        appendLog({ text: "restarting ui", time: "t" });
+        return true;
+      },
+    );
+    const app = await mountApp();
+    await app.handleServiceAction("ui", "restart");
+    (await settle()).confirmServiceRestart();
+    await vi.waitFor(() => {
+      expect(watchServiceRestart).toHaveBeenCalledWith(
+        "ui",
+        "ui",
+        expect.any(Function),
+      );
+    });
+    expect(readDaemonLogFileStat).not.toHaveBeenCalled();
+  });
+
+  it("exits the console when purge completes", async () => {
+    const app = await mountApp();
+    app.handlePurgeDone();
+    expect(harness.exit).toHaveBeenCalled();
+  });
+
+  it("ignores arrow keys in developer subviews and service test picker", async () => {
+    const app = await mountApp();
+    await app.handleDaemonAction("view-cell-trace");
+    await settle();
+    mounted?.stdin.write("\x1b[C");
+    await mounted?.flush();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await mounted?.flush();
+    expect(mounted?.get().activeArea).toBe("services");
+
+    mounted?.get().closeDeveloperView();
+    await (await settle()).handleDaemonAction("run-tests");
+    await settle();
+    mounted?.stdin.write("\x1b[C");
+    await mounted?.flush();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await mounted?.flush();
+    expect(mounted?.get().activeArea).toBe("services");
+
+    mounted?.get().closeDeveloperView();
+    mounted?.get().openServiceTests("instance");
+    await settle();
+    mounted?.stdin.write("\x1b[C");
+    await mounted?.flush();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await mounted?.flush();
+    expect(mounted?.get().activeArea).toBe("services");
+  });
+
+  it("keeps the current area when arrows cannot switch further", async () => {
+    await mountApp();
+    mounted?.stdin.write("\x1b[D");
+    await mounted?.flush();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await mounted?.flush();
+    expect(mounted?.get().activeArea).toBe("services");
+
+    mounted?.stdin.write("\x1b[C");
+    await mounted?.flush();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await mounted?.flush();
+    expect(mounted?.get().activeArea).toBe("developer");
+
+    mounted?.stdin.write("\x1b[C");
+    await mounted?.flush();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await mounted?.flush();
+    expect(mounted?.get().activeArea).toBe("developer");
+  });
+
+  it("pins to daemon once during converge and ignores a later list refresh", async () => {
+    const app = await mountApp();
+    await app.handleDaemonAction("start-dev-env");
+    (await settle()).confirmOptionalServices(harness.optional);
+    expect((await settle()).selectedService?.id).toBe("daemon");
+
+    harness.services = [svc("ui"), svc("daemon"), svc("instance")];
+    await settle();
+    expect(mounted?.get().selectedService?.id).toBe("daemon");
+  });
+
+  it("does not pin to daemon during converge when that row is missing", async () => {
+    const app = await mountApp();
+    app.handleDaemonInstallDone();
+    harness.services = [svc("instance"), svc("ui")];
+    await settle();
+    (await settle()).confirmOptionalServices(harness.optional);
+    const next = await settle();
+    expect(next.daemonOperation).toBe("dev-env");
+    expect(next.selectedService?.id).toBe("instance");
+  });
+
+  it("ignores a selected index that is outside the current list", async () => {
+    const app = await mountApp();
+    app.setSelectedServiceIndex(99);
+    const next = await settle();
+    expect(next.selectedServiceIndex).toBe(99);
+    expect(next.selectedService).toBeNull();
   });
 });

@@ -182,14 +182,12 @@ export function findTestSuite(
 }
 
 /** Prepend vendored Node + Deno bins onto a trusted FHS PATH (not the user PATH). */
-export function testRunnerPathEnv(
-  basePath: string | undefined = TRUSTED_SYSTEM_PATH,
-): Record<string, string> {
+export function testRunnerPathEnv(basePath?: string): Record<string, string> {
   const prefixes = [
     `${RUNTIMES_DIR}/node/current/bin`,
     `${RUNTIMES_DIR}/deno/current`,
   ];
-  const existing = (basePath ?? "").split(":").filter(Boolean);
+  const existing = (basePath ?? TRUSTED_SYSTEM_PATH).split(":").filter(Boolean);
   const merged = [
     ...prefixes.filter((dir) => !existing.includes(dir)),
     ...existing,

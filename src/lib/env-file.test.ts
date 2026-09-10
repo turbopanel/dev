@@ -25,6 +25,7 @@ vi.mock("./spawn-trusted.ts", async (importOriginal) => {
     ...actual,
     spawnSyncTrusted: vi.fn(actual.spawnSyncTrusted),
     spawnSyncTrustedText: vi.fn(actual.spawnSyncTrustedText),
+    spawnTrustedText: vi.fn(actual.spawnTrustedText),
   };
 });
 
@@ -37,14 +38,21 @@ vi.mock("./dev-identity.ts", async (importOriginal) => {
 });
 
 import { resolveDevIdentity } from "./dev-identity.ts";
-import { mergeEnvFile, parseEnvEntries, readEnvFile, writeEnvFile } from "./env-file.ts";
-import { spawnSyncTrusted, spawnSyncTrustedText } from "./spawn-trusted.ts";
+import {
+  mergeEnvFile,
+  parseEnvEntries,
+  readEnvFile,
+  readEnvFileAsync,
+  writeEnvFile,
+} from "./env-file.ts";
+import { spawnSyncTrusted, spawnSyncTrustedText, spawnTrustedText } from "./spawn-trusted.ts";
 
 const mockedReadFileSync = vi.mocked(readFileSync);
 const mockedWriteFileSync = vi.mocked(writeFileSync);
 const mockedUnlinkSync = vi.mocked(unlinkSync);
 const mockedSpawnSyncTrusted = vi.mocked(spawnSyncTrusted);
 const mockedSpawnSyncTrustedText = vi.mocked(spawnSyncTrustedText);
+const mockedSpawnTrustedText = vi.mocked(spawnTrustedText);
 const mockedResolveDevIdentity = vi.mocked(resolveDevIdentity);
 
 const fsActual = await vi.importActual<typeof import("node:fs")>("node:fs");
@@ -63,6 +71,7 @@ afterEach(() => {
   mockedUnlinkSync.mockImplementation(fsActual.unlinkSync);
   mockedSpawnSyncTrusted.mockImplementation(spawnActual.spawnSyncTrusted);
   mockedSpawnSyncTrustedText.mockImplementation(spawnActual.spawnSyncTrustedText);
+  mockedSpawnTrustedText.mockImplementation(spawnActual.spawnTrustedText);
   mockedResolveDevIdentity.mockImplementation(identityActual.resolveDevIdentity);
   if (tempDir) {
     rmSync(tempDir, { recursive: true, force: true });
@@ -211,6 +220,43 @@ describe("readEnvFile / writeEnvFile privilege fallbacks", () => {
     mockedSpawnSyncTrustedText.mockReturnValue(sudoResult(1, "denied"));
 
     expect(readEnvFile("/etc/turbopanel/daemon.env")).toBe("");
+  });
+
+  it("readEnvFileAsync reads the path when it is readable", async () => {
+    const dir = makeTempDir();
+    const path = join(dir, "readable.env");
+    writeFileSync(path, "ASYNC=1\n");
+    mockedSpawnTrustedText.mockClear();
+
+    await expect(readEnvFileAsync(path)).resolves.toBe("ASYNC=1\n");
+    expect(mockedSpawnTrustedText).not.toHaveBeenCalled();
+  });
+
+  it("readEnvFileAsync uses sudo cat when the path is unreadable", async () => {
+    mockedSpawnTrustedText.mockResolvedValue({
+      status: 0,
+      stdout: "FROM_SUDO_ASYNC=1\n",
+      stderr: "",
+    });
+
+    await expect(readEnvFileAsync(join("/no-such-turbopanel-env", "missing.env"))).resolves
+      .toBe("FROM_SUDO_ASYNC=1\n");
+    expect(mockedSpawnTrustedText).toHaveBeenCalledWith("sudo", [
+      "-n",
+      "cat",
+      join("/no-such-turbopanel-env", "missing.env"),
+    ]);
+  });
+
+  it("readEnvFileAsync returns blank when sudo cat fails", async () => {
+    mockedSpawnTrustedText.mockResolvedValue({
+      status: 1,
+      stdout: "denied",
+      stderr: "sudo: a password is required",
+    });
+
+    await expect(readEnvFileAsync(join("/no-such-turbopanel-env", "denied.env")))
+      .resolves.toBe("");
   });
 
   it("writeEnvFile falls back to sudo mkdir/cp/chown when the path is not writable", () => {

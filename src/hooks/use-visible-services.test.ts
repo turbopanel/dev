@@ -152,4 +152,46 @@ describe("useVisibleServices", () => {
     expect(calls).toBe(2);
     expect(mounted.get().services).toEqual([instance]);
   });
+
+  it("drops a scan that resolves after unmount", async () => {
+    let resolveScan: ((services: DevService[]) => void) | undefined;
+    vi.mocked(readVisibleServices).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveScan = resolve;
+        }),
+    );
+    mounted = mountHook(() => useVisibleServices());
+    await mounted.flush();
+    expect(mounted.get().loading).toBe(true);
+    expect(mounted.get().services).toEqual([]);
+    const snapshot = mounted.get();
+    mounted.unmount();
+    mounted = undefined;
+    resolveScan!([daemon]);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(snapshot.loading).toBe(true);
+    expect(snapshot.services).toEqual([]);
+  });
+
+  it("drops a failed scan that rejects after unmount", async () => {
+    let rejectScan: ((error: Error) => void) | undefined;
+    vi.mocked(readVisibleServices).mockImplementation(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectScan = reject;
+        }),
+    );
+    mounted = mountHook(() => useVisibleServices());
+    await mounted.flush();
+    expect(mounted.get().loading).toBe(true);
+    expect(mounted.get().services).toEqual([]);
+    const snapshot = mounted.get();
+    mounted.unmount();
+    mounted = undefined;
+    rejectScan!(new Error("systemctl gone"));
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(snapshot.loading).toBe(true);
+    expect(snapshot.services).toEqual([]);
+  });
 });

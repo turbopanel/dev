@@ -200,7 +200,7 @@ test("ensureDevUserDockerAccess falls back to command -v docker", async () => {
   mockedSpawnSync.mockImplementation((command) => {
     const cmd = String(command);
     if (cmd === "sudo") {
-      return spawnRet(0, undefined as unknown as string);
+      return { ...spawnRet(0), stdout: undefined as unknown as string };
     }
     if (cmd === "sh") {
       return spawnRet(0);
@@ -208,6 +208,25 @@ test("ensureDevUserDockerAccess falls back to command -v docker", async () => {
     return spawnRet(1);
   });
   await expect(ensureDevUserDockerAccess()).resolves.toBe(false);
+});
+
+test("ensureDevUserDockerAccess throws when sudo usermod fails without stderr", async () => {
+  mockedTryResolve.mockReturnValue({ user: "dev", uid: 1000, gid: 1000 });
+  const lines: string[] = [];
+  mockedSpawnSync.mockImplementation((command) => {
+    const cmd = String(command);
+    if (cmd === "getent") {
+      return spawnRet(0, "docker:x:999:");
+    }
+    if (cmd === "sudo") {
+      return { ...spawnRet(1), stderr: undefined as unknown as string };
+    }
+    return spawnRet(1);
+  });
+  await expect(ensureDevUserDockerAccess((line) => lines.push(line))).rejects.toThrow(
+    "Failed to add dev user to docker group",
+  );
+  expect(lines).toEqual([""]);
 });
 
 test("refreshDevPermissionsQuietly refreshes ownership in development", async () => {

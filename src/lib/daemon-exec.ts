@@ -49,7 +49,9 @@ export function resolveDenoBinVersion(bin: string): string | null {
   if (result.status !== 0) {
     return null;
   }
-  const first = (result.stdout ?? "").split("\n", 1)[0] ?? "";
+  const stdout = result.stdout ?? "";
+  const newline = stdout.indexOf("\n");
+  const first = newline === -1 ? stdout : stdout.slice(0, newline);
   return /^deno\s+([\d.]+)/.exec(first.trim())?.[1] ?? null;
 }
 

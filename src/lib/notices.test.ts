@@ -57,14 +57,23 @@ describe('packagesFromPnpmLicenses', () => {
           { versions: ['1.0.0'], license: 'MIT' },
           { name: 'left-pad', versions: ['', '  ', '1.3.0'], license: '' },
           { name: 'blank-versions', license: 'MIT' },
+          { name: 'inherit-group', versions: ['2.0.0'] },
         ],
       },
-      new Set(['left-pad@1.3.0']),
+      new Set(['left-pad@1.3.0', 'inherit-group@2.0.0']),
     )
     expect(packages).toEqual([
       {
         name: 'left-pad',
         version: '1.3.0',
+        license: 'MIT',
+        role: 'production',
+        homepage: undefined,
+        copyright: undefined,
+      },
+      {
+        name: 'inherit-group',
+        version: '2.0.0',
         license: 'MIT',
         role: 'production',
         homepage: undefined,
@@ -207,6 +216,17 @@ describe('packagesFromDenoLock', () => {
   it('treats missing jsr/npm sections as empty', () => {
     expect(packagesFromDenoLock({}, {})).toEqual([])
   })
+
+  it('uses an empty license when the caller map has no match', () => {
+    const packages = packagesFromDenoLock(
+      {
+        jsr: { '@std/assert@1.0.19': {} },
+        npm: { 'yaml@2.9.0': {} },
+      },
+      {},
+    )
+    expect(packages.map((row) => row.license)).toEqual(['', ''])
+  })
 })
 
 describe('packagesFromPodfileLock', () => {
@@ -290,6 +310,13 @@ describe('classifyLicense', () => {
     expect(classifyLicense('GPL-3.0-only OR LicenseRef-Proprietary', 'production')).toBe(
       'copyleft-production',
     )
+  })
+
+  it('skips empty OR operands and rejects a closed-early parenthetical', () => {
+    expect(classifyLicense('GPL-3.0-only OR  OR LicenseRef-Proprietary', 'production')).toBe(
+      'copyleft-production',
+    )
+    expect(classifyLicense('(MIT) OR (Apache-2.0)', 'production')).toBeNull()
   })
 
   it('walks nested SPDX parentheses when splitting OR/AND', () => {
@@ -494,6 +521,16 @@ describe('helpers', () => {
     expect(merged[0]?.role).toBe('production')
   })
 
+  it('keeps the existing row when a later group has a weaker role', () => {
+    const merged = mergeNoticePackages([
+      [pkg({ name: 'yaml', license: 'ISC', role: 'production' })],
+      [pkg({ name: 'yaml', license: 'MIT', role: 'development' })],
+    ])
+    expect(merged).toHaveLength(1)
+    expect(merged[0]?.role).toBe('production')
+    expect(merged[0]?.license).toBe('ISC')
+  })
+
   it('keeps the stronger role and fills missing metadata from the weaker row', () => {
     const merged = mergeNoticePackages([
       [
@@ -568,6 +605,14 @@ describe('helpers', () => {
         MIT: [{ name: 'skip', versions: ['1.0.0'] }, { versions: ['1.0.0'], paths: ['x'] }],
       }).size,
     ).toBe(0)
+    expect(
+      pnpmPackagePaths({
+        MIT: [
+          { name: 'no-versions', paths: ['node_modules/no-versions'] },
+          { name: 'blanks', versions: ['', '  ', '1.2.3'], paths: ['node_modules/blanks'] },
+        ],
+      }).get('blanks@1.2.3'),
+    ).toBe('node_modules/blanks')
     const withNotice = attachNoticeText(
       pkg({ name: 'next', version: '16.2.9', license: 'Apache-2.0' }),
       '  Apache Next NOTICE  ',

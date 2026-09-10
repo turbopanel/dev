@@ -520,6 +520,25 @@ test("applyOptionalDevServices disables a unit-only service without docker", asy
   );
 });
 
+test("applyOptionalDevServices treats missing systemctl stdout as not installed", async () => {
+  mockedSpawnSyncTrustedText.mockReturnValue({
+    status: 0,
+    stdout: undefined as unknown as string,
+    stderr: "",
+    pid: 0,
+    output: ["", "", ""],
+    signal: null,
+  });
+  const lines: string[] = [];
+  await applyOptionalDevServices(
+    { ...defaultOptionalSelection(), ui: true },
+    (line) => lines.push(line),
+  );
+  expect(lines.some((line) => line.includes("UI (Expo) is not installed yet"))).toBe(
+    true,
+  );
+});
+
 test("stripe is a unit-only optional service with the stripe_listen ansible stem", () => {
   const stripe = OPTIONAL_DEV_SERVICE_DEFS.find((def) => def.id === "stripe");
   if (!stripe) {

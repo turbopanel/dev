@@ -199,9 +199,9 @@ export async function runOrchestrationAction(
         return;
       }
 
-      if (!stderrTail && stderrBuffer.trim().length > 0) {
-        stderrTail = lastNonEmptyLine(stderrBuffer) ?? stderrTail;
-      }
+      // Always fold the full stderr buffer so a leftover fragment that the
+      // per-chunk splitter did not promote still becomes the error tail.
+      stderrTail = lastNonEmptyLine(stderrBuffer) ?? stderrTail;
 
       const message = lastFailureMessage || stderrTail || stdoutTail || "Orchestration action failed";
       reject(new Error(message));

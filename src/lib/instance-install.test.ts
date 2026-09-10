@@ -495,6 +495,27 @@ describe("runOrchestrationAction", () => {
     ).rejects.toThrow("orphan-error");
   });
 
+  it("folds blank stderr lines and prefers the last non-empty fragment", async () => {
+    stubSpawn({
+      code: 1,
+      stderrChunks: ["first-error\n", "\n", "   \n", "last-error\n"],
+    });
+    await expect(
+      runOrchestrationAction(["x"], () => {}, undefined, { denoBin: "/d" }),
+    ).rejects.toThrow("last-error");
+  });
+
+  it("ignores whitespace-only stderr and falls back to stdout", async () => {
+    stubSpawn({
+      code: 1,
+      stderrChunks: ["   \n", "\n  \n"],
+      stdoutChunks: ["stdout-fallback\n"],
+    });
+    await expect(
+      runOrchestrationAction(["x"], () => {}, undefined, { denoBin: "/d" }),
+    ).rejects.toThrow("stdout-fallback");
+  });
+
   it("falls back to stdout tail then a generic message", async () => {
     stubSpawn({
       code: 1,

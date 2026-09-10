@@ -207,6 +207,44 @@ describe("resolveDevIdentity", () => {
     }
   });
 
+  it("treats a missing process UID as unresolvable", async () => {
+    vi.resetModules();
+    vi.doMock("./spawn-trusted.ts", () => ({
+      spawnSyncTrustedText: vi.fn(() => passwdLine("vagrant", 1000, 1000)),
+    }));
+    const getuid = vi.spyOn(process, "getuid").mockReturnValue(
+      undefined as unknown as number,
+    );
+    try {
+      const { resolveDevIdentity: resolve, DevIdentityError: Err } = await import(
+        "./dev-identity.ts"
+      );
+      expect(() => resolve()).toThrow(Err);
+    } finally {
+      getuid.mockRestore();
+      vi.resetModules();
+    }
+  });
+
+  it("falls back to the passwd gid when getgid is missing", async () => {
+    vi.resetModules();
+    vi.doMock("./spawn-trusted.ts", () => ({
+      spawnSyncTrustedText: vi.fn(() => passwdLine("vagrant", 1000, 1000)),
+    }));
+    const getuid = vi.spyOn(process, "getuid").mockReturnValue(1000);
+    const getgid = vi.spyOn(process, "getgid").mockReturnValue(
+      undefined as unknown as number,
+    );
+    try {
+      const { resolveDevIdentity: resolve } = await import("./dev-identity.ts");
+      expect(resolve()).toEqual({ user: "vagrant", uid: 1000, gid: 1000 });
+    } finally {
+      getuid.mockRestore();
+      getgid.mockRestore();
+      vi.resetModules();
+    }
+  });
+
   it("rejects root when SUDO_USER is the root account", async () => {
     vi.resetModules();
     vi.doMock("./spawn-trusted.ts", () => ({

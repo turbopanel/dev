@@ -86,4 +86,21 @@ describe("useDaemonEnv", () => {
     await mounted.flush();
     expect(mounted.get().runtime).toBe("workers");
   });
+
+  it("does not paint a late poll after unmount", async () => {
+    let resolveRead: ((value: DaemonEnvSnapshot) => void) | undefined;
+    vi.mocked(readDaemonEnvSnapshotAsync).mockImplementation(
+      () => new Promise((resolve) => {
+        resolveRead = resolve;
+      }),
+    );
+
+    mounted = mountHook(() => useDaemonEnv());
+    expect(mounted.get().runtime).toBe("deno");
+    mounted.unmount();
+    mounted = undefined;
+
+    resolveRead!(snapshot({ runtime: "workers" }));
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  });
 });
