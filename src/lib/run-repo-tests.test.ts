@@ -2,6 +2,18 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
+import { RUN_CAPTURED_ABORTED_EXIT } from "./install-output.ts";
+import { NODE_BIN, PNPM_BIN, RUNTIMES_DIR } from "./paths.ts";
+
+vi.mock("./daemon-exec.ts", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./daemon-exec.ts")>();
+  return {
+    ...actual,
+    resolveBootstrapDenoBin: vi.fn(() => "/opt/fake/resolved-deno"),
+  };
+});
+
+import { resolveBootstrapDenoBin } from "./daemon-exec.ts";
 import {
   buildTestCommand,
   findTestRepo,
@@ -12,13 +24,12 @@ import {
   testRepoForServiceId,
   testRunnerPathEnv,
 } from "./run-repo-tests.ts";
-import { RUN_CAPTURED_ABORTED_EXIT } from "./install-output.ts";
-import { NODE_BIN, PNPM_BIN, RUNTIMES_DIR } from "./paths.ts";
 
 const tempRoots: string[] = [];
 
 afterEach(() => {
   vi.unstubAllEnvs();
+  vi.mocked(resolveBootstrapDenoBin).mockClear();
   for (const root of tempRoots.splice(0)) {
     rmSync(root, { recursive: true, force: true });
   }
@@ -193,9 +204,9 @@ test("buildTestCommand uses vendored node and pnpm when bins are omitted", () =>
 
 test("buildTestCommand resolves Deno itself when resolveDenoBin is omitted", () => {
   const daemon = buildTestCommand("turbopaneld", "test");
-  expect(daemon.cmd[1]).toBe("task");
-  expect(daemon.cmd[2]).toBe("test");
-  expect(daemon.cmd[0]?.length).toBeGreaterThan(0);
+  expect(resolveBootstrapDenoBin).toHaveBeenCalledOnce();
+  expect(daemon.cmd).toEqual(["/opt/fake/resolved-deno", "task", "test"]);
+  expect(daemon.label).toBe("deno task test");
 });
 
 test("runRepoTests streams banner lines and reports exit code", async () => {
