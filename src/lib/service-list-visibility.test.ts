@@ -13,30 +13,34 @@ import {
   optionalDevServiceCatalogIdsForRuntime,
 } from "./optional-dev-services.ts";
 
-test("catalog optional ids mirror optional dev service definitions", () => {
+test("catalog optional ids follow the runtime: Deno omits Stripe, Workers omits Redis Insight", () => {
   expect([...optionalDevServiceCatalogIdsForRuntime("deno")].sort((a, b) =>
     a.localeCompare(b)
-  )).toEqual([...OPTIONAL_DEV_SERVICE_IDS].sort((a, b) => a.localeCompare(b)));
+  )).toEqual(["dbstudio", "redisinsight", "smtp", "ui", "website"]);
+  expect([...optionalDevServiceCatalogIdsForRuntime("workers")].sort((a, b) =>
+    a.localeCompare(b)
+  )).toEqual(["dbstudio", "smtp", "stripe", "ui", "website"]);
 });
 
-test("workers runtime omits Deno-only optional catalog rows", () => {
+test("workers runtime omits Deno-only optional catalog rows; Deno omits Stripe", () => {
   expect(catalogOptionalServiceIdsForRuntime("deno")).toEqual([
     "dbstudio",
     "smtp",
     "ui",
     "website",
     "redisinsight",
-    "stripe",
   ]);
   expect(catalogOptionalServiceIdsForRuntime("workers")).toEqual([
     "dbstudio",
     "smtp",
     "ui",
     "website",
+    "stripe",
   ]);
   expect(catalogOptionalServiceIdsForRuntime("workers")).not.toContain(
     "redisinsight",
   );
+  expect(catalogOptionalServiceIdsForRuntime("deno")).not.toContain("stripe");
 });
 
 test("isCatalogOptionalServiceId accepts optional service ids", () => {
@@ -105,7 +109,6 @@ test("mergeCatalogOptionalServices injects missing catalog rows in order", () =>
     "website",
     "smtp",
     "redisinsight",
-    "stripe",
   ]);
   expect(merged.find((service) => service.id === "smtp")?.status).toBe(
     "uninstalled",
@@ -125,6 +128,7 @@ test("mergeCatalogOptionalServices does not duplicate existing rows", () => {
   );
   expect(merged.filter((service) => service.id === "smtp")).toHaveLength(1);
   expect(merged.some((service) => service.id === "redisinsight")).toBe(false);
+  expect(merged.some((service) => service.id === "stripe")).toBe(true);
   expect(merged.find((service) => service.id === "smtp")?.status).toBe(
     "stopped",
   );

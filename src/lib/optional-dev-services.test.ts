@@ -170,9 +170,13 @@ test("optionalDevServiceCatalogIdsForRuntime omits Deno-only tools on Workers", 
   expect(optionalDevServiceCatalogIdsForRuntime("deno")).toContain(
     "redisinsight",
   );
+  expect(optionalDevServiceCatalogIdsForRuntime("deno")).not.toContain(
+    "stripe",
+  );
   expect(optionalDevServiceCatalogIdsForRuntime("workers")).not.toContain(
     "redisinsight",
   );
+  expect(optionalDevServiceCatalogIdsForRuntime("workers")).toContain("stripe");
 });
 
 test("applyOptionalDevServices stops docker-backed containers when unit is disabled", async () => {
@@ -547,8 +551,8 @@ test("stripe is a unit-only optional service with the stripe_listen ansible stem
   expect(stripe.unit).toBe("turbopanel-stripe-listen");
   expect(stripe.ansibleStem).toBe("stripe_listen");
   expect(optionalDevServiceBackingContainers(stripe)).toEqual([]);
-  expect(optionalDevServiceCatalogIdsForRuntime("deno")).toContain("stripe");
-  expect(optionalDevServiceCatalogIdsForRuntime("workers")).not.toContain("stripe");
+  expect(optionalDevServiceCatalogIdsForRuntime("deno")).not.toContain("stripe");
+  expect(optionalDevServiceCatalogIdsForRuntime("workers")).toContain("stripe");
 });
 
 test("applyOptionalDevServices reports a missing stripe unit when wanted", async () => {

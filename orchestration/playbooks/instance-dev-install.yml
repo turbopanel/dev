@@ -125,10 +125,11 @@
     # Compose content stays daemon-owned (managed.ha.reconcile).
     - role: orchestrator
     - role: mailpit
-    # Stripe CLI `listen` forwarder (webhook events → /webhook/stripe). Its
-    # env file is loaded by the instance unit, so it runs before instance-launch.
+    # Stripe CLI `listen` forwarder (webhook events → /webhook/stripe).
+    # Billing exists only in the Workers build; the instance unit does not
+    # load stripe.env (wrangler reads .dev.vars).
     - role: stripe-listen
-      when: turbopanel_instance_runtime == 'deno'
+      when: turbopanel_instance_runtime == 'workers'
     - role: instance-user
     # GTK/NSS/GBM stack for @react-native/debugger-shell (Debian only).
     - role: instance-dev-prereqs
@@ -178,7 +179,7 @@
           - unit: turbopanel-redis-insight
             enabled: "{{ (turbopanel_instance_runtime == 'deno') and (turbopanel_optional_redis_insight | default(false) | bool) }}"
           - unit: turbopanel-stripe-listen
-            enabled: "{{ (turbopanel_instance_runtime == 'deno') and (turbopanel_optional_stripe_listen | default(false) | bool) }}"
+            enabled: "{{ (turbopanel_instance_runtime == 'workers') and (turbopanel_optional_stripe_listen | default(false) | bool) }}"
 
     - name: Resolve optional units to start
       ansible.builtin.set_fact:

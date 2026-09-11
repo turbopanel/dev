@@ -41,8 +41,10 @@ export type OptionalDevServiceDef = {
 /** Optional services that only apply to the Deno self-hosted dev stack. */
 export const OPTIONAL_DENO_ONLY_SERVICE_IDS = [
   "redisinsight",
-  // The Workers instance reads its secrets from `.dev.vars`, not from the
-  // stripe.env file the instance unit loads, so the forwarder is Deno-only.
+] as const satisfies readonly OptionalDevServiceId[];
+
+/** Optional services that only apply to the Workers (hosted billing) stack. */
+export const OPTIONAL_WORKERS_ONLY_SERVICE_IDS = [
   "stripe",
 ] as const satisfies readonly OptionalDevServiceId[];
 
@@ -206,7 +208,10 @@ export function optionalDevServiceCatalogIdsForRuntime(
         !(OPTIONAL_DENO_ONLY_SERVICE_IDS as readonly string[]).includes(id),
     );
   }
-  return OPTIONAL_DEV_SERVICE_IDS;
+  return OPTIONAL_DEV_SERVICE_IDS.filter(
+    (id) =>
+      !(OPTIONAL_WORKERS_ONLY_SERVICE_IDS as readonly string[]).includes(id),
+  );
 }
 
 export function optionalDevServiceBackingContainers(

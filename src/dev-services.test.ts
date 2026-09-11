@@ -226,6 +226,31 @@ describe("computeVisibleServices", () => {
     expect(services.some((service) => service.id === "cache")).toBe(false);
     expect(services.some((service) => service.id === "queue")).toBe(false);
     expect(services.some((service) => service.id === "db")).toBe(true);
+    expect(services.some((service) => service.id === "stripe")).toBe(true);
+  });
+
+  it("shows the Stripe CLI only on the Workers runtime", () => {
+    const deno = computeVisibleServices(snapshot({
+      units: new Map([["turbopanel-instance", loaded("active")]]),
+      env: {
+        runtime: "deno",
+        uiMode: "dev",
+        runMode: "source",
+        devInstanceEnabled: true,
+      },
+    }));
+    expect(deno.some((service) => service.id === "stripe")).toBe(false);
+
+    const workers = computeVisibleServices(snapshot({
+      units: new Map([["turbopanel-instance", loaded("active")]]),
+      env: {
+        runtime: "workers",
+        uiMode: "dev",
+        runMode: "source",
+        devInstanceEnabled: true,
+      },
+    }));
+    expect(workers.some((service) => service.id === "stripe")).toBe(true);
   });
 
   it("merges gray catalog rows once part of the stack is installed", () => {

@@ -1,5 +1,6 @@
 import type { DevService, DevServiceStatus } from "../dev-services.ts";
 import {
+  OPTIONAL_DEV_SERVICE_IDS,
   optionalDevServiceCatalogIdsForRuntime,
   type OptionalDevServiceId,
 } from "./optional-dev-services.ts";
@@ -26,8 +27,7 @@ export const SERVICE_LIST_ORDER = [
 export function isCatalogOptionalServiceId(
   id: string,
 ): id is CatalogOptionalServiceId {
-  return (optionalDevServiceCatalogIdsForRuntime("deno") as readonly string[])
-    .includes(id);
+  return (OPTIONAL_DEV_SERVICE_IDS as readonly string[]).includes(id);
 }
 
 export function catalogOptionalServiceIdsForRuntime(
