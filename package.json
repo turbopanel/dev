@@ -12,6 +12,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
+    "verify:ci": "pnpm notices:check && pnpm typecheck && pnpm test:coverage",
     "typecheck": "tsc --noEmit",
     "check:git-hooks": "sh scripts/check-git-hooks-path.sh",
     "notices:generate": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/generate-notices.mjs",

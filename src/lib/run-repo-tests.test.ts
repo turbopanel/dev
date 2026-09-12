@@ -113,7 +113,14 @@ test("buildTestCommand uses Deno tasks for turbopaneld and pnpm elsewhere", () =
 });
 
 test("buildTestCommand rejects suites not offered for the repo", () => {
-  expect(() => buildTestCommand("website", "test")).toThrow(TypeError);
+  expect(() => buildTestCommand("website", "test:do")).toThrow(TypeError);
+});
+
+test("every catalog repo offers CI verify and coverage", () => {
+  for (const repo of TEST_REPO_CATALOG) {
+    expect(findTestSuite(repo, "verify:ci")).toBeDefined();
+    expect(findTestSuite(repo, "test:coverage")).toBeDefined();
+  }
 });
 
 test("buildTestCommand rejects unknown repo ids", () => {

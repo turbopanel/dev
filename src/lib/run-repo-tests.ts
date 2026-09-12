@@ -19,6 +19,7 @@ import { openTestRunLog, type TestRunLogHandle } from "./test-run-log.ts";
 export type TestRepoId = (typeof ALL_DEV_CHECKOUT_DIRS)[number];
 
 export type TestSuiteId =
+  | "verify:ci"
   | "test"
   | "test:coverage"
   | "test:do"
@@ -42,6 +43,11 @@ export type TestRepoDef = Readonly<{
 }>;
 
 const PNPM_SUITES = {
+  "verify:ci": {
+    id: "verify:ci",
+    label: "CI verify",
+    detail: "pnpm verify:ci (GitHub Actions job minus Sonar upload)",
+  },
   test: {
     id: "test",
     label: "Unit tests",
@@ -75,6 +81,11 @@ const PNPM_SUITES = {
 } as const satisfies Record<string, TestSuiteDef>;
 
 const DENO_SUITES = {
+  "verify:ci": {
+    id: "verify:ci",
+    label: "CI verify",
+    detail: "deno task verify:ci (verify.yml minus Sonar upload)",
+  },
   test: {
     id: "test",
     label: "Unit tests",
@@ -115,33 +126,52 @@ export const TEST_REPO_CATALOG: readonly TestRepoDef[] = [
   {
     id: "turbopaneld",
     label: "turbopaneld",
-    suites: [DENO_SUITES.test, DENO_SUITES["test:coverage"], DENO_SUITES.check],
+    suites: [
+      DENO_SUITES["verify:ci"],
+      DENO_SUITES["test:coverage"],
+      DENO_SUITES.test,
+      DENO_SUITES.check,
+    ],
   },
   {
     id: "turbopanel",
     label: "turbopanel",
     suites: [
-      PNPM_SUITES["test:do"],
+      PNPM_SUITES["verify:ci"],
       PNPM_SUITES["test:coverage"],
+      PNPM_SUITES["test:do"],
       PNPM_SUITES["test:hook"],
     ],
   },
   {
     id: "ui",
     label: "ui",
-    suites: [PNPM_SUITES.test, PNPM_SUITES.typecheck, PNPM_SUITES.lint],
+    suites: [
+      PNPM_SUITES["verify:ci"],
+      PNPM_SUITES["test:coverage"],
+      PNPM_SUITES.test,
+      PNPM_SUITES.typecheck,
+      PNPM_SUITES.lint,
+    ],
   },
   {
     id: "website",
     label: "website",
-    suites: [PNPM_SUITES.typecheck, PNPM_SUITES.lint],
+    suites: [
+      PNPM_SUITES["verify:ci"],
+      PNPM_SUITES["test:coverage"],
+      PNPM_SUITES.test,
+      PNPM_SUITES.typecheck,
+      PNPM_SUITES.lint,
+    ],
   },
   {
     id: "dev",
     label: "dev (console)",
     suites: [
-      PNPM_SUITES.test,
+      PNPM_SUITES["verify:ci"],
       PNPM_SUITES["test:coverage"],
+      PNPM_SUITES.test,
       PNPM_SUITES.typecheck,
     ],
   },

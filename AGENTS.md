@@ -146,6 +146,12 @@ must SSH into the VM. From the host `dev` checkout (where the
 `Vagrantfile` lives):
 
 ```bash
+# CI-parity for every sibling (static gates + test:coverage LCOV, minus Sonar upload).
+# From the host this re-execs via vagrant ssh; same path inside the guest.
+./scripts/ci-verify.sh
+./scripts/ci-verify.sh ui website
+./scripts/ci-verify.sh --coverage-only
+
 # one-shot (prefix vendored Node + Deno)
 vagrant ssh -c 'export PATH="/opt/turbopanel/vendor/node/current/bin:/opt/turbopanel/vendor/deno/current:$PATH"; cd ~/dev && pnpm test'
 vagrant ssh -c 'export PATH="/opt/turbopanel/vendor/node/current/bin:/opt/turbopanel/vendor/deno/current:$PATH"; cd ~/turbopaneld && deno task test'
@@ -170,6 +176,8 @@ Guest commands:
 | `pnpm test` | Vitest once (`vitest run`) |
 | `pnpm test:watch` | Vitest watch mode |
 | `pnpm test:coverage` | Vitest + LCOV (`coverage/lcov.info`) |
+| `pnpm verify:ci` | GitHub Actions `verify.yml` minus Sonar upload (notices + typecheck + LCOV) |
+| `./scripts/ci-verify.sh` | Same job for every sibling checkout (guest; re-execs via `vagrant ssh` from the host) |
 | `pnpm typecheck` | `tsc --noEmit` |
 | `pnpm notices:generate` | Write `THIRD_PARTY_NOTICES.md` from the resolved pnpm graph |
 | `pnpm notices:check` | Fail when notices are stale vs the lockfile, or a production dependency has an unreviewed license class |
